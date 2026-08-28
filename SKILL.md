@@ -1,6 +1,6 @@
 ---
 name: adversarial-validation
-description: Adversarially validate high-impact technical conclusions, and any non-trivial technical conclusion when the host explicitly signals Max or Ultra, before accepting them. Use for architecture and design decisions, code reviews, refactors, optimization/performance claims, concurrency, caching, state/lifecycle management, networking or file I/O, persistence, security, platform abstractions, SDK/API/framework/library choices, benchmarks, infrastructure, build/deployment decisions, and expensive or hard-to-reverse technical choices. After an initial proposal or conclusion exists, stop trying to support it and actively try to break it with the strongest plausible competing design, counterexample, hidden assumption, failure mode, scale limit, or falsifiable test. Prefer measurement, profiler data, tests, logs, primary documentation, and reproducible benchmarks over verbal defense. Do not use for trivial getters/DTOs/formatting or when no meaningful technical decision is being made.
+description: Adversarially validate high-impact technical conclusions, and any non-trivial technical conclusion when the host explicitly signals Max or Ultra, before accepting them. First ground task-completion claims in the original user request and approved scope changes; then try to break the conclusion with the strongest plausible competing design, counterexample, hidden assumption, failure mode, scale limit, or falsifiable test. Use for architecture and design decisions, code reviews, refactors, optimization/performance claims, concurrency, caching, state/lifecycle management, networking or file I/O, persistence, security, platform abstractions, SDK/API/framework/library choices, benchmarks, infrastructure, build/deployment decisions, and expensive or hard-to-reverse technical choices. Prefer measurement, profiler data, tests, logs, primary documentation, and reproducible benchmarks over verbal defense. Do not use for trivial getters/DTOs/formatting or when no meaningful technical decision is being made.
 ---
 
 # Adversarial Validation
@@ -29,6 +29,36 @@ For every consequential conclusion:
 
 If a challenge is measurable, do not resolve it by argument when it can reasonably be resolved by measurement.
 
+## Task Grounding Invariant
+
+Adversarial review is independent only when both the reviewer and the proposition
+are grounded independently of the Author's success narrative. A fresh reviewer
+given an altered task contract can independently validate the wrong task.
+
+Before reviewing a task-completion claim, bind the review to a **source-grounded
+task contract** created from authoritative inputs that existed before the
+Author's defense:
+
+- the relevant original user request or authoritative specification, preserved
+  verbatim or by lossless source reference;
+- explicit constraints and acceptance criteria, each traceable to its source;
+- chronological user-authored scope amendments;
+- whether each amendment approves an intermediate milestone, defers work, or
+  replaces the effective task scope; and
+- the artifact or answer whose completion claim is being reviewed.
+
+An Author-written proposition, requirement summary, completion report, memory,
+roadmap, or rationale is a claim under review. It is not evidence that the user
+requested, approved, changed, or received that scope. Technical evidence can
+establish that a narrower artifact works; it cannot establish that the user
+authorized narrowing the task.
+
+If the relevant source request is unavailable, provenance is missing, or a
+material scope ambiguity cannot be resolved from authoritative inputs, return
+`INVALID REVIEW INPUT` and do not issue PASS. Ask the user when their choice is
+needed. Keep private request text private; pass only the minimum necessary
+content to the reviewer and do not publish it in review artifacts.
+
 ## Independent Review Escalation
 
 Inline falsification is the default.
@@ -45,15 +75,16 @@ When escalation is triggered by Max/Ultra, use a reviewer at Max/Ultra if suppor
 The reviewer must:
 
 - be freshly created for each proposition in a no-history context (`fork_turns="none"` or the host equivalent), not reused from any prior review or created from a default or full-history fork, and remain read-only
-- receive only the falsifiable proposition, raw evidence or artifact references, actual requirements and constraints, and decision criteria
-- when the received proposition is biased, ambiguous, or artificially narrow, state both the original proposition and a neutral reformulation, preserve the actual requirements and decision criteria, and attack the reformulated proposition
+- receive the source-grounded task contract, the separately labeled Author proposition, raw evidence or artifact references, and decision criteria; do not replace authoritative source material with an Author summary
+- first compare the Author proposition and artifact scope with the effective task contract; when the proposition is biased, ambiguous, or artificially narrow, state both `P-task` for original-task fulfillment and a neutral `P-tech` for technical correctness within the claimed scope
+- treat a milestone as full scope only when an authoritative user amendment explicitly replaces the task; "do this first" or approval of an intermediate prototype does not silently cancel the remaining task
 - not receive the author's reasoning, defense, desired verdict, confidence, or prior failed rebuttals
 - construct the strongest realistic countercase and decision-reversing test
 - not edit files, implement fixes, or spawn further agents
 
 The same raw evidence may be shared. Independence comes from withholding the author's reasoning and desired conclusion, not from withholding relevant facts.
 
-The main agent owns the final verdict, but must not make the final decision more favorable than the reviewer's result unless it cites new decision-relevant evidence the reviewer did not consider and explains which exact countercase or failed assumption that evidence resolves. A more favorable decision includes raising the verdict, dropping or weakening conditions, reducing stated risk, expanding approved scope or rollout, or strengthening an implementation or deployment recommendation. When making such a change, record the reviewer's original verdict, the evidence-based override rationale, and any unresolved disagreement in Residual Risk.
+The main agent owns the final verdict, but must not make the final decision more favorable than the reviewer's result unless it cites new decision-relevant evidence the reviewer did not consider and explains which exact countercase or failed assumption that evidence resolves. A more favorable decision includes raising the verdict, dropping or weakening conditions, reducing stated risk, expanding approved scope or rollout, or strengthening an implementation or deployment recommendation. Author summaries, restated requirements, post-hoc success narratives, and technical evidence about a narrower artifact cannot override a task-scope failure. If new evidence changes the task contract, approved scope, or artifact identity, run a fresh no-history delta review bound to the new authoritative source and artifact before raising the verdict. Record the reviewer's original verdict, the source-bound evidence, the delta-review result, and any unresolved disagreement in Residual Risk.
 
 If the host cannot create a fresh no-history reviewer, do not simulate or claim independent review. Perform inline falsification when possible and leave required independent validation UNVERIFIED. Reviewer failure or timeout is never evidence of PASS.
 
@@ -102,6 +133,31 @@ Use proportional depth. A small decision may need one strong challenge. A founda
 
 # Protocol
 
+## 0. Ground the Task Contract
+
+Before reading or validating the Author's completion narrative:
+
+1. Identify the authoritative source request and every relevant user-authored
+   amendment in chronological order.
+2. Derive the effective requirements with source references. Mark material
+   ambiguity instead of silently selecting the easier interpretation.
+3. Distinguish an approved intermediate milestone from an explicit replacement
+   of the full task.
+4. Bind the effective contract, candidate artifact, and completion claim to the
+   same review.
+5. Compare the artifact's declared and implemented scope with that contract.
+
+For completion reviews, state two propositions when they differ:
+
+- **P-task** — the artifact fulfills the effective user task.
+- **P-tech** — the artifact or conclusion is technically correct within its
+  actual, possibly narrower, scope.
+
+An unauthorized scope substitution rejects P-task even when P-tech survives.
+Do not let a local test, useful prototype, or internally coherent subsystem
+raise the task-fulfillment verdict. Continue technical review only to report
+the narrower artifact's actual value and defects.
+
 ## 1. State the Proposition
 
 Write the exact conclusion being evaluated in one falsifiable sentence.
@@ -114,7 +170,9 @@ Good:
 
 > Using a persistent dictionary cache here reduces frame-time cost without introducing meaningful memory, invalidation, or lifecycle risk.
 
-Do not validate a vague conclusion.
+Do not validate a vague conclusion. Do not let an Author-supplied P-tech replace
+P-task. When no task-completion claim is involved, state only the relevant
+technical proposition.
 
 ## 2. Separate Facts From Assumptions
 
@@ -126,6 +184,9 @@ Use:
 - **Inference** — strongly suggested but not directly demonstrated.
 - **Unverified** — required for the conclusion but not yet demonstrated.
 - **Rejected** — contradicted by evidence.
+
+Classify Author-produced summaries, status labels, requirement restatements,
+and rationales as claims, not evidence of the task contract or artifact truth.
 
 Pay special attention to assumptions that were silently converted into facts.
 
@@ -333,9 +394,15 @@ Whenever a benchmark supports the conclusion, ask:
 
 Never generalize beyond the benchmark's actual scope.
 
-## 9. Attack the Requirement Itself
+## 9. Challenge the Requirement Without Rewriting It
 
 Sometimes both the proposal and its competitor are solving the wrong problem.
+
+This step may recommend a simpler requirement or deletion to the user. It does
+not change the effective task contract, excuse non-fulfillment, or authorize the
+reviewer to grade a different task. Until the user explicitly approves a scope
+replacement, evaluate P-task against the existing contract and record the
+simpler alternative separately.
 
 Ask:
 
@@ -347,6 +414,10 @@ Ask:
 - Are we paying complexity to support a hypothetical future that has no evidence?
 
 ## 10. Re-evaluate After the Attack
+
+For task-completion reviews, report P-task independently of P-tech. The overall
+completion result cannot be more favorable than P-task. A PASS for P-tech means
+only that the narrower technical proposition survived; it is not task success.
 
 Use one of these verdicts:
 
@@ -374,7 +445,10 @@ A stronger alternative or a decisive failure invalidates the proposal.
 For non-trivial validation, present the result compactly in this order:
 
 ## Proposition
-The exact conclusion being tested.
+State task-contract validity and scope provenance. For completion claims, state
+P-task and P-tech separately. If the source-grounded contract is unavailable,
+return `INVALID REVIEW INPUT` and stop before a technical verdict can be
+presented as task success.
 
 ## Strongest Countercase
 The best realistic argument against it.
@@ -386,7 +460,9 @@ What is confirmed, inferred, unverified, or contradicted.
 The test or observation most likely to change the verdict.
 
 ## Verdict
-PASS / PASS WITH CONDITIONS / UNVERIFIED / REVISE / REJECT.
+PASS / PASS WITH CONDITIONS / UNVERIFIED / REVISE / REJECT. For completion
+reviews, give separate P-task and P-tech verdicts and state that the overall
+completion result is bounded by P-task.
 
 ## Residual Risk
 Only the important remaining risks.
@@ -468,8 +544,33 @@ Do not transform:
 - vendor benchmark into independent validation
 - successful PoC into scalable production proof
 - test coverage into correctness proof
+- an Author-written requirement summary into the user's actual request
+- approval of an intermediate milestone into replacement of the full task
+- a passing subsystem or narrow prototype into fulfillment of the original task
+- technical correctness within reduced scope into authorization to reduce scope
+- a post-hoc completion narrative into new decision-relevant evidence
 
 Keep evidence categories separate.
+
+## Scope Laundering
+
+Do not make a hard request easier and then validate only the substituted task.
+This remains a failure when the substituted artifact is useful, well tested, or
+accurately documented as limited.
+
+Bad:
+
+1. User requests a production system or a stated fidelity target.
+2. Author silently chooses a prototype or easier proxy.
+3. Prototype-local checks pass.
+4. Review reports the original task as successful.
+
+Correct handling:
+
+- reject or revise P-task for unauthorized narrowing;
+- evaluate the prototype under P-tech only;
+- ask whether the user wants to approve the narrower milestone or restore the
+  original scope.
 
 ---
 
@@ -552,4 +653,22 @@ Never treat a current implementation as correct merely because it compiles or pa
 
 Never preserve the original conclusion out of politeness, sunk cost, or consistency with earlier advice.
 
+Never treat the Author's reframing as user approval. Never call a task complete
+because a different, easier task was completed correctly.
+
 If adversarial validation overturns the original conclusion, say so directly and update the recommendation.
+
+## Behavioral Regression for This Skill
+
+When validating changes to this Skill, include a framing-invariance test:
+
+- keep the authoritative request, amendments, artifact, and measurements fixed;
+- vary only the Author narrative between favorable, neutral, and unfavorable;
+- require the same P-task verdict in every variant; and
+- include controls for a user-approved intermediate milestone and an explicit
+  user-approved scope replacement.
+
+Any critical false accept, any success path without authoritative task-source
+provenance, or any narrative-dependent P-task verdict requires REVISE. Passing
+this finite suite is scoped regression evidence, not proof against all framing
+attacks.
