@@ -1,6 +1,6 @@
 ---
 name: adversarial-validation
-description: Adversarially validate high-impact technical conclusions, and any non-trivial technical conclusion when the host explicitly signals Max or Ultra, before accepting them. First ground task-completion claims in the original user request and approved scope changes; then try to break the conclusion with the strongest plausible competing design, counterexample, hidden assumption, failure mode, scale limit, or falsifiable test. Use for architecture and design decisions, code reviews, refactors, optimization/performance claims, concurrency, caching, state/lifecycle management, networking or file I/O, persistence, security, platform abstractions, SDK/API/framework/library choices, benchmarks, infrastructure, build/deployment decisions, and expensive or hard-to-reverse technical choices. Prefer measurement, profiler data, tests, logs, primary documentation, and reproducible benchmarks over verbal defense. Do not use for trivial getters/DTOs/formatting or when no meaningful technical decision is being made.
+description: "Adversarially validate non-trivial technical work at two bounded task-level gates: once before committing to a consequential plan and once after a final candidate exists. Ground completion claims in the original request and approved scope changes, then try to break the plan or result with the strongest plausible alternative, counterexample, hidden assumption, failure mode, or falsifiable test. Use for architecture, code review, performance, concurrency, caching, persistence, security, infrastructure, deployment, and other costly-to-reverse decisions. Do not continuously re-review routine implementation steps or use for trivial getters, DTOs, formatting, or mechanical edits."
 ---
 
 # Adversarial Validation
@@ -11,7 +11,9 @@ Prevent confirmation cascades in technical work.
 
 A coherent explanation, a passing happy-path test, or a list of advantages is not validation.
 
-Once a provisional conclusion exists, stop accumulating reasons that support it. Change roles from author to hostile reviewer and attempt to falsify the conclusion.
+At an enabled plan or result gate, stop accumulating reasons that support the
+current proposal. Change roles from author to hostile reviewer and attempt to
+falsify it.
 
 The goal is **not** to reject the proposal.
 
@@ -23,11 +25,38 @@ Do not oppose for the sake of opposition. Do not invent absurd edge cases merely
 
 ## Core Rule
 
-For every consequential conclusion:
+At each enabled task-level gate:
 
 > Do not continue supporting the current conclusion. Find the strongest plausible argument, competing design, counterexample, benchmark, or failure mode that could break it.
 
 If a challenge is measurable, do not resolve it by argument when it can reasonably be resolved by measurement.
+
+Do not open a new adversarial review for every intermediate decision. Review
+the plan, let the Author implement it, then review the completed candidate.
+
+## Review Timing and Budget
+
+This timing rule replaces continuous or per-conclusion review.
+
+1. **Plan Gate** — after a concrete approach and acceptance evidence are
+   proposed, but before substantial implementation. Run one bounded review of
+   the plan, its strongest realistic alternative, and its decision-reversing
+   test.
+2. **Implementation Window** — execute the accepted plan without new
+   adversarial reviewers. Routine design choices, tool calls, test failures,
+   and fixes stay inside the Author loop. Re-open the Plan Gate only when the
+   user changes the task, the planned artifact type changes, or new evidence
+   invalidates a load-bearing plan assumption.
+3. **Result Gate** — after one final candidate, diff, or decision package
+   exists. Run one bounded review against the original task and the evidence
+   produced by the implementation.
+4. **Targeted Recheck** — after `REVISE`, review only the changed finding and
+   its affected claims. Do not restart the entire attack. Allow one targeted
+   recheck by default; further rounds require an explicit user request.
+
+Reserve the Result Gate. Never consume its review by spawning reviewers for
+intermediate conclusions. A user-requested mid-work review is allowed, but it
+does not silently replace the final review.
 
 ## Task Grounding Invariant
 
@@ -61,14 +90,28 @@ content to the reviewer and do not publish it in review artifacts.
 
 ## Independent Review Escalation
 
-Inline falsification is the default.
+Inline falsification is the default at each enabled gate.
 
-After a provisional conclusion exists:
+At the Plan Gate or Result Gate:
 
-- if the user explicitly requests independent or adversarial review, spawn exactly one independent reviewer regardless of the author's risk or triviality classification
-- otherwise, for a non-trivial conclusion, spawn exactly one independent reviewer when the host explicitly indicates Max or Ultra, or when applicable project, agent, or task instructions require independent validation
+- if the user explicitly requests independent or adversarial review, spawn
+  exactly one independent reviewer for that gate regardless of the Author's
+  risk classification
+- otherwise, for a non-trivial plan or result, spawn exactly one independent
+  reviewer for that gate when the host explicitly indicates Max or Ultra, or
+  when applicable project, agent, or task instructions require independent
+  validation
 
-An explicit request is always a sufficient escalation condition. For non-trivial conclusions, Max/Ultra is also sufficient; do not require the authoring agent to first classify the decision as high risk. If the current reasoning tier is not exposed, do not infer it from task complexity; a host or profile that wants Max/Ultra escalation must provide an explicit model-visible instruction.
+An explicit request is always a sufficient escalation condition. For
+non-trivial gate artifacts, Max/Ultra is also sufficient; do not require the
+Author to classify the decision as high risk first. If the current reasoning
+tier is not exposed, do not infer it from task complexity; a host or profile
+that wants Max/Ultra escalation must provide an explicit model-visible
+instruction.
+
+Do not spawn independent reviewers during the Implementation Window merely
+because a consequential subdecision appeared. Do not create reviewer trees or
+let a reviewer spawn another reviewer.
 
 When escalation is triggered by Max/Ultra, use a reviewer at Max/Ultra if supported. Otherwise use the strongest available reviewer and disclose the downgrade.
 
@@ -87,6 +130,18 @@ The same raw evidence may be shared. Independence comes from withholding the aut
 The main agent owns the final verdict, but must not make the final decision more favorable than the reviewer's result unless it cites new decision-relevant evidence the reviewer did not consider and explains which exact countercase or failed assumption that evidence resolves. A more favorable decision includes raising the verdict, dropping or weakening conditions, reducing stated risk, expanding approved scope or rollout, or strengthening an implementation or deployment recommendation. Author summaries, restated requirements, post-hoc success narratives, and technical evidence about a narrower artifact cannot override a task-scope failure. If new evidence changes the task contract, approved scope, or artifact identity, run a fresh no-history delta review bound to the new authoritative source and artifact before raising the verdict. Record the reviewer's original verdict, the source-bound evidence, the delta-review result, and any unresolved disagreement in Residual Risk.
 
 If the host cannot create a fresh no-history reviewer, do not simulate or claim independent review. Perform inline falsification when possible and leave required independent validation UNVERIFIED. Reviewer failure or timeout is never evidence of PASS.
+
+### Optional TRACE Expansion
+
+`trace-adversarial-validation` is a separate, explicit-only Skill for auditing
+the observable reasoning and action process behind a plan or result. Activate
+it only when the user explicitly requests TRACE or explicitly includes process
+validation in the current gate.
+
+TRACE replaces the one independent reviewer allocated to that gate; it does
+not add an Analyst, Adversary, and Judge tree on top of the baseline reviewer.
+The main agent still owns the final Adversarial Validation verdict. Do not
+activate TRACE implicitly from task difficulty alone.
 
 ### Optional Measurement Executor
 
@@ -496,7 +551,7 @@ Bad:
 4. Therefore proposal is good.
 5. Search for more reasons it is good.
 
-Instead, after a provisional conclusion exists, switch immediately to falsification.
+Instead, switch to falsification at the enabled Plan Gate or Result Gate.
 
 ## IR-Pitch Review
 
@@ -660,7 +715,22 @@ If adversarial validation overturns the original conclusion, say so directly and
 
 ## Behavioral Regression for This Skill
 
-When validating changes to this Skill, include a framing-invariance test:
+When validating changes to this Skill, include both timing and
+framing-invariance tests.
+
+Timing regression:
+
+- use a task with several consequential intermediate decisions;
+- require one Plan Gate review and one Result Gate review;
+- require zero independent reviewer calls during the Implementation Window;
+- after `REVISE`, allow only one targeted recheck of the affected finding; and
+- when TRACE is explicitly enabled, require it to replace rather than add to
+  the independent reviewer allocated to that gate.
+
+Any routine intermediate reviewer call, recursive reviewer, missing reserved
+Result Gate, or implicit TRACE activation requires `REVISE`.
+
+Framing-invariance regression:
 
 - keep the authoritative request, amendments, artifact, and measurements fixed;
 - vary only the Author narrative between favorable, neutral, and unfavorable;
