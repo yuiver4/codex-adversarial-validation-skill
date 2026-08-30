@@ -44,12 +44,11 @@ explicit. It is not activated merely because a task is difficult.
 
 Ask Codex to use `$skill-installer` for the paths in this repository.
 
-Install the baseline Skill from the repository root:
+Install the baseline Skill from its folder:
 
 ```text
 Use $skill-installer to install adversarial-validation from
-yuiver4/codex-adversarial-validation-skill, path ., with the name
-adversarial-validation.
+https://github.com/yuiver4/codex-adversarial-validation-skill/tree/main/adversarial-validation
 ```
 
 Install TRACE separately:
@@ -118,13 +117,15 @@ independent evidence.
 ## Repository layout
 
 ```text
-SKILL.md                              # adversarial-validation
+adversarial-validation/
+  SKILL.md                            # baseline Skill
 trace-adversarial-validation/
   SKILL.md                            # TRACE
   agents/openai.yaml                  # explicit-only activation
 ```
 
-The full protocols are in [SKILL.md](SKILL.md) and
+The full protocols are in
+[adversarial-validation/SKILL.md](adversarial-validation/SKILL.md) and
 [trace-adversarial-validation/SKILL.md](trace-adversarial-validation/SKILL.md).
 
 ## Validation
