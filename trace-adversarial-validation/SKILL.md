@@ -1,20 +1,22 @@
 ---
 name: trace-adversarial-validation
-description: Explicitly audit a non-trivial technical plan or final result by comparing its observable reasoning and action process with the artifact and evidence, then trying to break the load-bearing steps. Use at one bounded Plan Gate or Result Gate when the user explicitly requests TRACE or explicitly includes process validation in Adversarial Validation. Work from plans, tool trajectories, diffs, tests, and decision records when raw chain-of-thought is unavailable. Do not run continuously, reconstruct hidden reasoning, create reviewer trees, or replace the requested deliverable with validation infrastructure.
+description: Explicitly audit whether observable E0-E4 process evidence supports the claimed path to a non-trivial technical plan or final result. Use at one bounded Plan Gate or Result Gate only when the user explicitly requests TRACE or explicitly includes process validation in Adversarial Validation. Assess P-proc only from plans, tool trajectories, diffs, tests, logs, and decision records; never reconstruct hidden chain-of-thought or own P-out, P-task, P-tech, or release.
 ---
 
 # TRACE Adversarial Validation
 
 ## Purpose
 
-TRACE extends Adversarial Validation from the external conclusion to the
-observable process that produced it.
+TRACE audits the observable process that produced a plan or result. It answers
+one question:
 
-It answers two separate questions:
-
-- **P-out** — does the plan or result survive the strongest realistic attack?
 - **P-proc** — do the available process records actually support the claimed
   path from evidence to result?
+
+TRACE does not judge whether the plan or result is externally correct, fulfills
+the task, is technically sound, or may be released. `P-out`, `P-task`,
+`P-tech`, and release belong to Adversarial Validation in standalone mode or
+to the Judge in strict orchestrated mode.
 
 TRACE audits work that is already being performed. It does not replace the
 requested deliverable, create a general completion-management system, or turn
@@ -35,8 +37,9 @@ Choose exactly one current gate:
 Do not review every intermediate decision. During implementation, return to the
 Author loop. Re-open the Plan Gate only after a user scope change, an artifact
 type change, or evidence that invalidates a load-bearing plan assumption.
-After `REVISE`, allow one targeted recheck of the changed finding by default.
-Further rounds require an explicit user request.
+After the parent gate returns `REVISE`, allow one targeted P-proc recheck of
+the changed finding by default. Further rounds require an explicit user
+request.
 
 ## Evidence Boundary
 
@@ -44,7 +47,7 @@ Use the strongest evidence actually available:
 
 | Tier | Observable evidence | Supported claim |
 |------|---------------------|-----------------|
-| E0 | final artifact or answer only | P-out only; process remains unavailable |
+| E0 | final artifact or answer only | process remains unavailable; P-proc cannot pass |
 | E1 | plans, tool calls, commands, diffs, tests, logs, errors | observed actions and action/result alignment |
 | E2 | authored rationale, decision record, summary | explanation consistency, not hidden reasoning |
 | E3 | genuinely exposed and frozen trace text | claims about that text and trace/answer alignment |
@@ -63,48 +66,54 @@ Classify load-bearing claims as:
 - **Unverified** — needed for the conclusion but not demonstrated.
 - **Contradicted** — conflicts with direct evidence.
 
-## Reviewer Boundary
+## Analyst Boundary
 
-Use one fresh no-history, read-only TRACE reviewer when the host can provide
-one. It replaces the independent reviewer allocated to the current
-Adversarial Validation gate; it is not an additional reviewer tree.
+In ordinary direct use, perform one bounded TRACE audit inline or use one fresh
+no-history, read-only TRACE Analyst when the host can provide one. This audit
+does not replace the Adversarial Validation outcome review.
 
-Give the reviewer only:
+Give the Analyst only:
 
-- the original request and explicit user amendments needed for this gate;
-- the proposed plan or final candidate;
+- the original request and explicit user amendments needed to interpret the
+  process record;
+- the proposed plan or final candidate as context, not as a proposition for
+  outcome judgment;
 - the relevant E0-E4 evidence and acceptance criteria; and
-- the allowed output format.
+- the P-proc-only output format.
 
 Do not give it the Author's desired verdict, confidence, defense, or previous
-failed rebuttals. Minimize private data and secrets in the review input. A
-separate Analyst, Adversary, and Judge are research mode and require an explicit
-user request; they are not the production default.
+failed rebuttals. Minimize private data and secrets in the review input.
 
-If a fresh reviewer is unavailable, perform the same bounded analysis inline
-and mark reviewer independence `UNVERIFIED`. Do not build a new transport,
+In strict orchestrated mode, the parent runtime uses independent roles: a TRACE
+Analyst, an Adversarial Validation Adversary, a Measurement role, and a Judge.
+The TRACE Analyst emits only a P-proc report from E0-E4 evidence. The Adversary
+attacks outcome claims, Measurement executes bound requests, and the Judge
+alone owns `P-out`, `P-task`, `P-tech`, and release. Do not merge those roles or
+turn the TRACE report into a release decision.
+
+If a fresh Analyst is unavailable, perform the same bounded analysis inline
+and mark Analyst independence `UNVERIFIED`. Do not build a new transport,
 hook, privacy system, oracle framework, or runtime merely to make the review
 look independent.
 
 ## Plan Gate
 
-Audit the proposed approach, not a completed artifact.
+Audit the observable planning process, not the plan's external correctness.
 
-1. Restate the requested outcome and the proposed artifact in one sentence
-   each. If their artifact types or scopes differ without user approval, return
-   `REVISE` before technical optimization.
-2. Identify the strongest realistic competing approach.
-3. Identify the one or two assumptions that carry most of the plan.
-4. Apply **Step Kill**: if a load-bearing assumption is false or removed, does
-   the plan still reach the requested outcome?
-5. Name the decision-reversing observation or test that should be produced
-   during implementation.
-6. Return `PASS`, `PASS WITH CONDITIONS`, `UNVERIFIED`, `REVISE`, or `REJECT`
-   for the plan only. A Plan Gate PASS is permission to execute the plan, not
-   evidence that the final task is complete.
+1. State the claimed path from requirements and evidence to the selected plan.
+2. Build a compact map of the load-bearing observations, decisions, and cited
+   evidence.
+3. Find action/claim mismatches, assumptions promoted to facts, ignored user
+   corrections, and unsupported scope transitions.
+4. Apply **Step Kill** to the process claim: remove its strongest evidence link
+   and determine whether the claimed derivation is still supported.
+5. Name the observation or measurement needed to resolve the most important
+   process uncertainty. In strict orchestrated mode, request it from
+   Measurement rather than executing it.
+6. Return only a `P-proc` assessment: `PASS`, `UNVERIFIED`, or `REJECT`.
 
-Stop after the gate result. Do not design or implement the artifact during the
-review.
+Stop after the process report. It does not authorize implementation or decide
+whether the plan passes the Plan Gate.
 
 ## Result Gate
 
@@ -116,21 +125,20 @@ record for this review. Then:
 2. **Alignment check** — find action/claim mismatches, assumptions promoted to
    facts, tool results reported incorrectly, ignored user corrections,
    unauthorized scope reduction, and work unrelated to the requested result.
-3. **Step Kill** — choose the strongest load-bearing step. Invert or remove it
-   conceptually. If P-out survives, P-proc for that claimed path fails and
-   P-out needs independent evidence.
-4. **Strongest countercase** — construct one realistic failure case or stronger
-   competing design. Do not list many weak objections.
-5. **Decision-reversing test** — run one bounded test when practical. Prefer
-   the real workload, failure path, profiler, logs, primary source, or minimal
-   reproduction. Otherwise mark the dependent claim `UNVERIFIED`.
-6. **Separate verdicts** — judge P-out and P-proc independently. A coherent
-   process cannot prove a wrong artifact, and a correct artifact can survive a
-   rejected rationale only through independent evidence.
-
-When paired with `adversarial-validation`, that Skill still owns P-task and the
-overall completion verdict. TRACE evidence may lower or condition that verdict;
-it cannot raise completion above an unmet P-task.
+3. **Step Kill** — remove the strongest load-bearing evidence link and determine
+   whether the claimed route to the result is still supported. Do not infer the
+   result's correctness from this exercise.
+4. **Strongest process countercase** — construct one realistic alternative
+   explanation of the observed actions or evidence. Do not turn it into an
+   outcome verdict.
+5. **Measurement** — identify one bounded observation that could resolve the
+   process dispute. In strict orchestrated mode, send a bound request to
+   Measurement and consume only its returned evidence; in ordinary direct use,
+   run it only when practical and already authorized. Otherwise mark the
+   dependent process claim `UNVERIFIED`.
+6. **P-proc only** — return `PASS`, `UNVERIFIED`, or `REJECT` for P-proc. A
+   coherent process cannot prove a correct artifact, and a rejected process
+   does not itself prove an incorrect artifact.
 
 ## High-Value Failure Patterns
 
@@ -153,59 +161,53 @@ Prefer defects that can change the decision:
 
 ## Required Output
 
-For a Plan Gate, use the lightweight form:
+For either gate, use:
 
-1. **Proposition** — requested outcome and proposed approach.
-2. **Challenge** — strongest competitor, Step Kill, evidence status, and
-   decision-reversing test.
-3. **Gate Verdict** — plan verdict and the one important residual risk.
+1. **P-proc Proposition** — the claimed path from evidence and actions to the
+   plan or result.
+2. **Process Map** — compact load-bearing steps and dependencies.
+3. **Step Kill / Process Countercase** — the strongest break in that path.
+4. **Evidence** — E0-E4 plus Confirmed / Inference / Unverified /
+   Contradicted.
+5. **Measurement** — the bound request or result and whether it resolved the
+   process uncertainty.
+6. **P-proc Assessment** — `PASS`, `UNVERIFIED`, or `REJECT`, Analyst
+   independence, and only material residual process risk.
 
-For a Result Gate, use:
+Do not include a `P-out`, `P-task`, `P-tech`, gate, completion, or release
+verdict.
 
-1. **Proposition** — P-out and P-proc.
-2. **Process Map** — compact load-bearing steps and evidence status.
-3. **Strongest Countercase** — including Step Kill.
-4. **Evidence** — Confirmed / Inference / Unverified / Contradicted.
-5. **Decision-Reversing Test** — whether it ran and what happened.
-6. **Verdict** — P-out and P-proc separately, plus only material residual risk.
-
-## Verdict Rules
-
-P-out uses:
-
-- `PASS`
-- `PASS WITH CONDITIONS`
-- `UNVERIFIED`
-- `REVISE`
-- `REJECT`
+## Assessment Rules
 
 P-proc uses `PASS`, `UNVERIFIED`, or `REJECT`.
 
 - `UNVERIFIED` is not PASS.
-- P-proc `REJECT` does not automatically reject P-out; independent evidence may
-  still support the result.
+- P-proc `REJECT` does not decide `P-out`; the outcome authority must use
+  independent evidence.
 - E0 cannot produce P-proc PASS.
 - E1/E2 cannot support internal-mechanism or raw-CoT faithfulness claims.
-- A test of a substituted artifact cannot establish completion of the requested
-  artifact.
-- A single successful case cannot establish that TRACE improves difficult-task
-  accuracy in general.
+- A test of a substituted artifact may expose a process mismatch, but TRACE
+  does not decide task fulfillment or technical correctness.
+- No P-proc assessment authorizes release.
 
 ## Regression Scenarios
 
 When revising this Skill, forward-test at least these behaviors:
 
 1. A difficult simulator request is replaced by a small numerical library or
-   toy task. TRACE must flag the artifact mismatch even if local tests pass.
+   toy task. TRACE must flag the observable scope transition without issuing a
+   `P-task` or `P-tech` verdict.
 2. A task contains many consequential intermediate decisions. Review occurs at
    the Plan Gate and Result Gate only, with no reviewer storm.
 3. Tool output contradicts the Author summary. Runtime evidence wins.
 4. Raw CoT is absent but plans, actions, and tests exist. TRACE performs an
    observable-process audit without claiming CoT faithfulness.
-5. The final answer is correct but its rationale is decorative or false. P-out
-   may survive while P-proc is rejected.
+5. The final answer is correct but its rationale is decorative or false. TRACE
+   rejects P-proc without making a P-out claim.
 6. The same controller selects the easier task, authors the oracle, and reports
-   all-pass. TRACE flags evaluator capture instead of calling it success.
+   all-pass. TRACE flags the process conflict instead of calling it success.
+7. In strict orchestrated mode, TRACE emits only the Analyst P-proc report;
+   Adversary, Measurement, and Judge retain their independent responsibilities.
 
-Passing this finite set is regression evidence only, not proof that TRACE
-improves reasoning accuracy or catches every future failure.
+Passing this finite set validates only the listed role, timing, and evidence
+boundaries.

@@ -1,6 +1,6 @@
 ---
 name: adversarial-validation
-description: "Adversarially validate non-trivial technical work at two bounded task-level gates: once before committing to a consequential plan and once after a final candidate exists. Ground completion claims in the original request and approved scope changes, then try to break the plan or result with the strongest plausible alternative, counterexample, hidden assumption, failure mode, or falsifiable test. Use for architecture, code review, performance, concurrency, caching, persistence, security, infrastructure, deployment, and other costly-to-reverse decisions. Do not continuously re-review routine implementation steps or use for trivial getters, DTOs, formatting, or mechanical edits."
+description: "Adversarially validate non-trivial technical work at two bounded task-level gates: once before committing to a consequential plan and once after a final candidate exists. Ground completion claims in the original request and approved scope changes, then try to break the plan or result with the strongest plausible alternative, counterexample, hidden assumption, failure mode, or falsifiable test. Use as the ordinary automatically discoverable baseline for architecture, code review, performance, concurrency, caching, persistence, security, infrastructure, deployment, and other costly-to-reverse decisions. Do not continuously re-review routine implementation steps or use for trivial getters, DTOs, formatting, or mechanical edits."
 ---
 
 # Adversarial Validation
@@ -58,6 +58,38 @@ Reserve the Result Gate. Never consume its review by spawning reviewers for
 intermediate conclusions. A user-requested mid-work review is allowed, but it
 does not silently replace the final review.
 
+## Operating Modes
+
+### Standalone Baseline
+
+Use standalone mode unless a parent runtime explicitly assigns the exact role
+`orchestrated-adversary`. In standalone mode, apply this full Skill at the Plan
+Gate and Result Gate. The reviewer or main agent may issue the gate verdict and,
+for completion claims, separate `P-task` and `P-tech` verdicts.
+
+### Orchestrated Adversary
+
+Enter this mode only on an explicit parent-runtime assignment of
+`orchestrated-adversary`; never infer it from task complexity, TRACE activation,
+or the existence of an orchestrator. The role is a fresh, read-only adversary
+inside a strict orchestration run.
+
+In this mode:
+
+- attack the supplied plan or result and its `P-task` / `P-tech` claims using
+  the strongest realistic countercase;
+- report contradicted or missing evidence and a decision-reversing measurement
+  request;
+- do not issue `P-task`, `P-tech`, `P-out`, or release verdicts;
+- do not assess `P-proc`, merge other roles, execute measurements, edit the
+  artifact, or spawn another reviewer; and
+- return an **Adversary Report** containing the challenged proposition, strongest
+  countercase, evidence status, requested measurement, and residual attack
+  surface. This report is evidence for the Judge, not a gate decision.
+
+The parent runtime, not this Skill, owns role isolation and release control.
+An assignment to this role does not activate TRACE.
+
 ## Task Grounding Invariant
 
 Adversarial review is independent only when both the reviewer and the proposition
@@ -90,6 +122,9 @@ content to the reviewer and do not publish it in review artifacts.
 
 ## Independent Review Escalation
 
+This section applies to standalone mode. In `orchestrated-adversary` mode, use
+the role boundary above and the isolation supplied by the parent runtime.
+
 Inline falsification is the default at each enabled gate.
 
 At the Plan Gate or Result Gate:
@@ -109,9 +144,10 @@ tier is not exposed, do not infer it from task complexity; a host or profile
 that wants Max/Ultra escalation must provide an explicit model-visible
 instruction.
 
-Do not spawn independent reviewers during the Implementation Window merely
-because a consequential subdecision appeared. Do not create reviewer trees or
-let a reviewer spawn another reviewer.
+In standalone mode, do not spawn independent reviewers during the
+Implementation Window merely because a consequential subdecision appeared.
+Do not create recursive reviewer trees or let a reviewer spawn another
+reviewer.
 
 When escalation is triggered by Max/Ultra, use a reviewer at Max/Ultra if supported. Otherwise use the strongest available reviewer and disclose the downgrade.
 
@@ -127,7 +163,7 @@ The reviewer must:
 
 The same raw evidence may be shared. Independence comes from withholding the author's reasoning and desired conclusion, not from withholding relevant facts.
 
-The main agent owns the final verdict, but must not make the final decision more favorable than the reviewer's result unless it cites new decision-relevant evidence the reviewer did not consider and explains which exact countercase or failed assumption that evidence resolves. A more favorable decision includes raising the verdict, dropping or weakening conditions, reducing stated risk, expanding approved scope or rollout, or strengthening an implementation or deployment recommendation. Author summaries, restated requirements, post-hoc success narratives, and technical evidence about a narrower artifact cannot override a task-scope failure. If new evidence changes the task contract, approved scope, or artifact identity, run a fresh no-history delta review bound to the new authoritative source and artifact before raising the verdict. Record the reviewer's original verdict, the source-bound evidence, the delta-review result, and any unresolved disagreement in Residual Risk.
+In standalone mode, the main agent owns the final verdict, but must not make the final decision more favorable than the reviewer's result unless it cites new decision-relevant evidence the reviewer did not consider and explains which exact countercase or failed assumption that evidence resolves. A more favorable decision includes raising the verdict, dropping or weakening conditions, reducing stated risk, expanding approved scope or rollout, or strengthening an implementation or deployment recommendation. Author summaries, restated requirements, post-hoc success narratives, and technical evidence about a narrower artifact cannot override a task-scope failure. If new evidence changes the task contract, approved scope, or artifact identity, run a fresh no-history delta review bound to the new authoritative source and artifact before raising the verdict. Record the reviewer's original verdict, the source-bound evidence, the delta-review result, and any unresolved disagreement in Residual Risk.
 
 If the host cannot create a fresh no-history reviewer, do not simulate or claim independent review. Perform inline falsification when possible and leave required independent validation UNVERIFIED. Reviewer failure or timeout is never evidence of PASS.
 
@@ -138,10 +174,16 @@ the observable reasoning and action process behind a plan or result. Activate
 it only when the user explicitly requests TRACE or explicitly includes process
 validation in the current gate.
 
-TRACE replaces the one independent reviewer allocated to that gate; it does
-not add an Analyst, Adversary, and Judge tree on top of the baseline reviewer.
-The main agent still owns the final Adversarial Validation verdict. Do not
-activate TRACE implicitly from task difficulty alone.
+TRACE audits only observable process evidence and `P-proc`; it does not replace
+this Skill or own `P-out`, `P-task`, `P-tech`, or release. In ordinary
+standalone use, TRACE may provide a separate process audit while this Skill
+continues to own its adversarial outcome review and verdicts.
+
+In strict orchestrated mode, the parent runtime uses independent roles: a TRACE
+Analyst, an Adversarial Validation Adversary, a Measurement role, and a Judge.
+The Adversary returns only the report defined above, Measurement returns only
+bound evidence, and the Judge alone combines reports and controls verdicts and
+release. Do not activate TRACE implicitly from task difficulty alone.
 
 ### Optional Measurement Executor
 
@@ -187,6 +229,11 @@ Use proportional depth. A small decision may need one strong challenge. A founda
 ---
 
 # Protocol
+
+The full protocol supports standalone review. In `orchestrated-adversary` mode,
+use its grounding, falsification, evidence, and measurement-request steps only;
+skip verdict formation and return the Adversary Report defined under Operating
+Modes.
 
 ## 0. Ground the Task Contract
 
@@ -470,6 +517,9 @@ Ask:
 
 ## 10. Re-evaluate After the Attack
 
+This step applies only in standalone mode. An `orchestrated-adversary` stops
+before verdict formation and returns its adversary report to the Judge.
+
 For task-completion reviews, report P-task independently of P-tech. The overall
 completion result cannot be more favorable than P-task. A PASS for P-tech means
 only that the narrower technical proposition survived; it is not task success.
@@ -496,6 +546,10 @@ A stronger alternative or a decisive failure invalidates the proposal.
 ---
 
 # Required Output
+
+This section applies to standalone mode. In `orchestrated-adversary` mode,
+return only the Adversary Report defined under Operating Modes and omit verdict,
+completion, and release fields.
 
 For non-trivial validation, present the result compactly in this order:
 
@@ -711,7 +765,10 @@ Never preserve the original conclusion out of politeness, sunk cost, or consiste
 Never treat the Author's reframing as user approval. Never call a task complete
 because a different, easier task was completed correctly.
 
-If adversarial validation overturns the original conclusion, say so directly and update the recommendation.
+In standalone mode, if adversarial validation overturns the original
+conclusion, say so directly and update the recommendation. In
+`orchestrated-adversary` mode, report the decisive attack without changing the
+Judge's recommendation or release state.
 
 ## Behavioral Regression for This Skill
 
@@ -724,11 +781,20 @@ Timing regression:
 - require one Plan Gate review and one Result Gate review;
 - require zero independent reviewer calls during the Implementation Window;
 - after `REVISE`, allow only one targeted recheck of the affected finding; and
-- when TRACE is explicitly enabled, require it to replace rather than add to
-  the independent reviewer allocated to that gate.
+- when TRACE is explicitly enabled, require it to assess only `P-proc` without
+  taking over the adversarial outcome review.
 
 Any routine intermediate reviewer call, recursive reviewer, missing reserved
 Result Gate, or implicit TRACE activation requires `REVISE`.
+
+Orchestration regression:
+
+- enter `orchestrated-adversary` mode only on the exact parent assignment;
+- require an Adversary Report with no verdict or release decision;
+- keep TRACE Analyst, Adversary, Measurement, and Judge responsibilities
+  separate; and
+- require the Judge, not the Adversary, to own `P-out`, `P-task`, `P-tech`, and
+  release.
 
 Framing-invariance regression:
 

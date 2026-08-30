@@ -1,16 +1,19 @@
 # Adversarial Validation + TRACE for Codex
 
-This repository contains two complementary Codex Skills:
+This repository contains two complementary Codex Skills and a separate Python
+orchestration runtime:
 
 - **`adversarial-validation`** — challenges a consequential technical plan once
   before implementation and challenges the final candidate once after the work
   is complete.
 - **`trace-adversarial-validation`** — an explicit-only extension that audits
-  the observable reasoning and action process behind one of those gates.
+  observable E0-E4 process evidence and assesses `P-proc` only.
+- **Python orchestrator** — runs the strict, isolated TRACE Analyst +
+  Adversarial Validation Adversary + Measurement + Judge workflow.
 
-The Skills are designed to catch ordinary technical failures, scope
-substitution, evaluator capture, and cases where a persuasive explanation is
-not supported by the actual actions or evidence.
+The Skills are behavioral instructions loaded by Codex. The Python orchestrator
+is executable runtime infrastructure; installing one does not install or start
+the other.
 
 ## Workflow
 
@@ -23,24 +26,41 @@ concrete plan
     -> one targeted recheck only after REVISE
 ```
 
-TRACE does not add a permanent Analyst/Adversary/Judge tree. When explicitly
-enabled, it uses the single reviewer allocated to that gate and adds process
-analysis, Step Kill, and separate P-out/P-proc verdicts.
+The cadence stays the same in ordinary and strict modes: one Plan Gate, one
+Result Gate, and at most one targeted recheck after `REVISE`.
+
+Ordinary Adversarial Validation works standalone and may issue `P-task` and
+`P-tech` verdicts. In strict orchestrated mode, the independent TRACE Analyst
+reports only `P-proc`, the Adversary returns only an adversary report,
+Measurement returns bound evidence, and the Judge alone owns `P-out`, `P-task`,
+`P-tech`, and release.
 
 ## Why two Skills?
 
 `adversarial-validation` answers whether the plan or result survives the
 strongest realistic countercase.
 
-`trace-adversarial-validation` additionally asks whether the available process
-record supports the claimed route to that result. It can work from observable
-plans, tool calls, diffs, tests, logs, and decision records. Raw
-chain-of-thought is neither required nor reconstructed.
+`trace-adversarial-validation` asks only whether the available process record
+supports the claimed route to that result. It can work from observable plans,
+tool calls, diffs, tests, logs, and decision records. Raw chain-of-thought is
+neither required nor reconstructed. TRACE does not decide outcome correctness,
+task fulfillment, technical correctness, or release.
 
 Keeping TRACE independent makes its additional cost and evidence boundary
 explicit. It is not activated merely because a task is difficult.
 
-## Install
+## Skills and runtime
+
+The two Skill directories can be installed into a Codex Skill location and
+used without the Python runtime. `adversarial-validation` keeps normal automatic
+discovery; TRACE is configured with `allow_implicit_invocation: false` and must
+be explicitly enabled.
+
+The Python code under `orchestrator/` is a separate controller for strict role
+isolation. Deploy and run it separately from the Skills. Invoking both Skills
+in one model context is not equivalent to the runtime's independent-role mode.
+
+## Install the Skills
 
 Ask Codex to use `$skill-installer` for the paths in this repository.
 
@@ -60,8 +80,96 @@ https://github.com/yuiver4/codex-adversarial-validation-skill/tree/main/trace-ad
 
 A freshly installed Skill is available on the next Codex turn. The installer
 does not overwrite an existing destination; updating an existing installation
-requires a separately chosen replacement or Git-managed workflow. TRACE is
-configured with `allow_implicit_invocation: false`.
+requires a separately chosen replacement or Git-managed workflow. These steps
+install only the Skill instructions. They do not deploy or start the Python
+orchestrator.
+
+## Deploy the strict runtime
+
+The runtime requires Python 3, Git, and a Codex installation that exposes
+`app-server --stdio`. It uses the current Codex credential state; it does not
+start an interactive login flow.
+
+Create a local job file outside the repository when it contains a private user
+request:
+
+```json
+{
+  "repository": "C:/path/to/clean/repository",
+  "original_request": "Implement the requested change without reducing scope.",
+  "amendments": [],
+  "base_revision": "HEAD",
+  "measurement_argv": ["python", "-B", "-m", "unittest"],
+  "role_timeout_seconds": 120,
+  "measurement_timeout_seconds": 120
+}
+```
+
+Run the complete pipeline without changing the target repository:
+
+```text
+python -B -X utf8 -m orchestrator --job C:/path/to/job.json
+```
+
+Apply the receipt-bound candidate only after every gate returns PASS:
+
+```text
+python -B -X utf8 -m orchestrator --job C:/path/to/job.json --apply
+```
+
+Dry-run is the default. The target must be a clean Git repository root whose
+`HEAD` is the selected base commit. The runtime creates disposable worktrees;
+it does not create persistent backup copies. Candidate identity and recovery
+come from Git objects, a binary-capable patch, hashes, and the release receipt.
+The measurement command must complete with exit code zero and its owned process
+container must be verified empty; a Judge response cannot convert a failed
+command or surviving descendant into releasable evidence. On Windows, a gated
+bootstrap joins a kill-on-close Job Object before it may launch the requested
+command. POSIX hosts use a dedicated process group.
+
+### Strict runtime path
+
+```mermaid
+flowchart TD
+    U[Original user request] --> PA[Plan Author session]
+    PA --> PT[TRACE Plan Analyst]
+    PA --> PV[AV Plan Adversary]
+    PT --> PJ[Plan Judge]
+    PV --> PJ
+    PJ -->|PASS| A[Author isolated worktree]
+    PJ -->|not PASS| B[Block]
+    A --> F[Frozen candidate]
+    F --> T[TRACE Result Analyst]
+    F --> V[AV Result Adversary]
+    F --> M[Measurement disposable worktree]
+    T --> J[Result Judge]
+    V --> J
+    M --> J
+    J -->|PASS plus valid receipt| R[Dry-run or explicit apply]
+    J -->|REVISE once| D[Scoped Author delta]
+    D --> C[One targeted recheck]
+    C -->|PASS| R
+    C -->|otherwise| B
+    J -->|UNVERIFIED or REJECT| B
+```
+
+Every model role gets a fresh ephemeral App Server thread. TRACE and AV are
+read-only. The Author may write only in an isolated worktree. Measurement runs
+in another disposable worktree. The Result Adversary reads a materialized
+frozen candidate rather than an encoded summary. The Judge receives the task
+contract, candidate identity, independent reports, and measurement; it does
+not receive Author reasoning or raw chain-of-thought.
+
+Reviewer threads also set the candidate project to untrusted, disable
+project-document loading, and add `enabled: false` overrides for every
+repository-local Skill found under the candidate's `.agents/skills`. Candidate-
+authored `AGENTS.md`, `.codex` settings, repository-local Skills, comments, and
+reports are evidence, not reviewer instructions. This matters because Codex
+normally loads project instructions and discovers repository-local Skills; see the official
+[configuration reference](https://developers.openai.com/codex/config-reference)
+and [Skill loading documentation](https://developers.openai.com/codex/skills).
+The reviewer App Server process itself starts from an empty disposable directory;
+only the isolated thread receives the candidate worktree as its `cwd`.
 
 ## Use
 
@@ -72,16 +180,19 @@ Use $adversarial-validation on this implementation plan. Review it once before
 implementation and reserve the final review for the completed result.
 ```
 
-Final review with TRACE:
+Standalone process audit with TRACE:
 
 ```text
 Use $adversarial-validation and explicitly enable
-$trace-adversarial-validation for the Result Gate. Compare the observable
-process with the final artifact and tests, then try to kill the load-bearing
-steps.
+$trace-adversarial-validation for the Result Gate. Audit whether the observable
+E0-E4 process evidence supports P-proc. Keep P-out, P-task, and P-tech with
+Adversarial Validation.
 ```
 
-TRACE may also be invoked directly for a bounded Plan Gate or Result Gate.
+TRACE may also be invoked directly for a bounded Plan Gate or Result Gate, but
+its output remains a P-proc assessment rather than an outcome or release
+verdict. Use the Python runtime when strict independent-role orchestration is
+required.
 
 ## Verdicts
 
@@ -93,14 +204,17 @@ Adversarial Validation uses:
 - `REVISE`
 - `REJECT`
 
-For completion claims, the baseline Skill separates **P-task** (the requested
-task was fulfilled) from **P-tech** (the produced artifact is technically sound
+In standalone mode, the baseline Skill separates **P-task** (the requested task
+was fulfilled) from **P-tech** (the produced artifact is technically sound
 within its actual scope).
 
-TRACE separates **P-out** (the external conclusion or artifact survives) from
-**P-proc** (the available process evidence supports the claimed reasoning
-path). A P-proc failure does not automatically reject a result that has
-independent evidence.
+When explicitly assigned `orchestrated-adversary`, the same Skill returns an
+adversary report only and cannot judge or release.
+
+TRACE uses only `PASS`, `UNVERIFIED`, or `REJECT` for **P-proc** (whether the
+available process evidence supports the claimed path). It cannot own `P-out`,
+`P-task`, `P-tech`, or release. In strict orchestrated mode, those decisions
+belong to the Judge.
 
 ## Evidence boundary
 
@@ -109,8 +223,13 @@ independent evidence.
 - A correct final answer is not proof that its explanation was faithful.
 - Observable actions and authored summaries are not raw chain-of-thought.
 - Reviewer separation is only as strong as the host isolation actually used.
-- A passing finite regression set is not proof that either Skill improves
-  difficult-task accuracy in general.
+- The parent receipt is an integrity binding produced by the same trusted local
+  runtime, not a cryptographic signature from an independent authority.
+- A passing finite regression set validates only the cases and role boundaries
+  it covers.
+- Fake App Server tests do not establish compatibility with every installed
+  Codex version. Run a bounded live canary before treating a deployment as
+  operational.
 - Keep credentials, personal data, private requests, and unpublished artifacts
   out of public review material.
 
@@ -122,6 +241,7 @@ adversarial-validation/
 trace-adversarial-validation/
   SKILL.md                            # TRACE
   agents/openai.yaml                  # explicit-only activation
+orchestrator/                         # separately deployed Python runtime
 ```
 
 The full protocols are in
@@ -140,6 +260,27 @@ Before accepting a revision:
 5. Confirm that TRACE remains usable without raw chain-of-thought and does not
    claim internal faithfulness.
 
-These checks validate the documented behavior boundaries. Comparative accuracy,
-false-accept rate, latency, and token cost still require a separate controlled
-evaluation rather than a single anecdotal success.
+`quick_validate.py` is not a file in this repository. It is bundled external
+tooling from the installed `skill-creator` Skill. From the repository root, run:
+
+```text
+python -X utf8 <skill-creator-directory>/scripts/quick_validate.py adversarial-validation
+python -X utf8 <skill-creator-directory>/scripts/quick_validate.py trace-adversarial-validation
+```
+
+These checks validate Skill structure and the documented behavior boundaries;
+they do not validate the separately deployed Python runtime. Validate the
+runtime separately:
+
+```text
+python -B -X utf8 -m unittest discover -s orchestrator/tests -v
+```
+
+On Windows, the real process-tree test is opt-in because restricted sandboxes
+may forbid `taskkill` even though the runtime correctly treats that refusal as
+a blocked measurement:
+
+```text
+$env:TRACE_RUN_WINDOWS_PROCESS_TREE_TEST='1'
+python -B -X utf8 -m unittest orchestrator.tests.test_gitops.GitCandidateTests.test_windows_timeout_kills_real_grandchild_process -v
+```
