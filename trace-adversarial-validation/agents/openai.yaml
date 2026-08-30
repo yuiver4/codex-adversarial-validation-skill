@@ -1,0 +1,6 @@
+interface:
+  display_name: "TRACE Adversarial Validation"
+  short_description: "Audit load-bearing process steps at bounded review gates"
+  default_prompt: "Use $trace-adversarial-validation to audit this plan or final result without reconstructing hidden chain-of-thought."
+policy:
+  allow_implicit_invocation: false
