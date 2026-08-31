@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import io
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
+from unittest import mock
 
 from orchestrator.cli import main
 from orchestrator.tests.helpers import (
@@ -92,6 +94,37 @@ class CliVerticalSliceTests(unittest.TestCase):
         ]
         self.assertEqual(len(calls), 16)
         self.assertEqual(len({call["thread_id"] for call in calls}), 16)
+
+    def test_dubious_ownership_reports_safe_action_only(self) -> None:
+        sensitive = "C:/Users/private-owner/secret-repository"
+        stderr = (
+            "fatal: detected dubious ownership in repository at '"
+            f"{sensitive}'\nTo add an exception for this directory, call:\n\n"
+            f"git config --global --add safe.directory {sensitive}\n"
+        ).encode("utf-8")
+        completed = subprocess.CompletedProcess(
+            ["git", "rev-parse", "--show-toplevel"],
+            128,
+            stdout=b"",
+            stderr=stderr,
+        )
+        output = io.StringIO()
+
+        with mock.patch(
+            "orchestrator.gitops.subprocess.run", return_value=completed
+        ) as run:
+            with redirect_stdout(output):
+                exit_code = main(["--job", str(self.job)])
+
+        self.assertEqual(exit_code, 2)
+        result = json.loads(output.getvalue())
+        self.assertEqual(result["state"], "BLOCKED")
+        self.assertEqual(result["code"], "GIT_DUBIOUS_OWNERSHIP")
+        self.assertIn("action", result)
+        self.assertIn("did not change Git configuration", result["action"])
+        self.assertNotIn(sensitive, output.getvalue())
+        self.assertFalse((self.repository / "result.txt").exists())
+        self.assertEqual(run.call_count, 1)
 
 
 if __name__ == "__main__":

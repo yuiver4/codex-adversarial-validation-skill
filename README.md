@@ -121,6 +121,12 @@ Dry-run is the default. The target must be a clean Git repository root whose
 `HEAD` is the selected base commit. The runtime creates disposable worktrees;
 it does not create persistent backup copies. Candidate identity and recovery
 come from Git objects, a binary-capable patch, hashes, and the release receipt.
+If Git rejects a repository owned by a different OS identity, the runtime
+blocks with `GIT_DUBIOUS_OWNERSHIP` and returns a path-free diagnostic. It never
+changes `safe.directory`. Prepare the repository with the same identity that
+runs the orchestrator, or, when the mismatch is intentional and the repository
+is trusted, configure trust for that exact path outside the runtime before
+retrying.
 The measurement command must complete with exit code zero and its owned process
 container must be verified empty; a Judge response cannot convert a failed
 command or surviving descendant into releasable evidence. On Windows, a gated

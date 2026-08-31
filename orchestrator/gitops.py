@@ -19,6 +19,19 @@ from .model import (
 from .process_control import ProcessTreeTerminator
 
 
+def _git_failure(args: Sequence[str], stderr: bytes) -> OrchestratorError:
+    detail = stderr.decode("utf-8", errors="replace").strip()
+    normalized = detail.casefold()
+    if (
+        "detected dubious ownership in repository" in normalized
+        and "safe.directory" in normalized
+    ):
+        return OrchestratorError("GIT_DUBIOUS_OWNERSHIP")
+    return OrchestratorError(
+        "GIT_COMMAND_FAILED", f"git {' '.join(args)}: {detail}"
+    )
+
+
 class GitRepository:
     def __init__(self, path: str | os.PathLike[str]) -> None:
         self.path = Path(path).resolve()
@@ -54,8 +67,7 @@ class GitRepository:
             check=False,
         )
         if check and completed.returncode != 0:
-            detail = completed.stderr.decode("utf-8", errors="replace").strip()
-            raise OrchestratorError("GIT_COMMAND_FAILED", f"git {' '.join(args)}: {detail}")
+            raise _git_failure(args, completed.stderr)
         return completed
 
     def resolve_commit(self, revision: str = "HEAD") -> str:

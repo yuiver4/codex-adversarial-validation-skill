@@ -6,6 +6,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from orchestrator.gitops import CandidateBuilder, GitRepository, MeasurementExecutor
 from orchestrator.model import OrchestratorError, RoleInvocation, TaskContract
@@ -103,6 +104,47 @@ class GitCandidateTests(unittest.TestCase):
             )
         finally:
             lease.cleanup()
+
+    def test_dubious_ownership_is_structured_without_automatic_trust(self) -> None:
+        sensitive = "C:/Users/private-owner/secret-repository"
+        stderr = (
+            "fatal: detected dubious ownership in repository at '"
+            f"{sensitive}'\nTo add an exception for this directory, call:\n\n"
+            f"git config --global --add safe.directory {sensitive}\n"
+        ).encode("utf-8")
+        completed = subprocess.CompletedProcess(
+            ["git", "status"], 128, stdout=b"", stderr=stderr
+        )
+
+        with mock.patch("orchestrator.gitops.subprocess.run", return_value=completed) as run:
+            with self.assertRaises(OrchestratorError) as caught:
+                self.repository.run("status")
+
+        error = caught.exception
+        self.assertEqual(error.code, "GIT_DUBIOUS_OWNERSHIP")
+        self.assertEqual(error.detail, "")
+        self.assertEqual(run.call_args.args[0], ["git", "status"])
+        self.assertNotIn("safe.directory", run.call_args.args[0])
+
+    def test_partial_or_unrelated_git_failures_remain_generic(self) -> None:
+        failures = (
+            b"fatal: not a git repository: C:/private/path",
+            b"fatal: safe.directory is not valid here",
+            b"fatal: detected dubious ownership in repository metadata",
+        )
+        for stderr in failures:
+            with self.subTest(stderr=stderr):
+                completed = subprocess.CompletedProcess(
+                    ["git", "status"], 128, stdout=b"", stderr=stderr
+                )
+                with mock.patch(
+                    "orchestrator.gitops.subprocess.run", return_value=completed
+                ):
+                    with self.assertRaises(OrchestratorError) as caught:
+                        self.repository.run("status")
+
+                self.assertEqual(caught.exception.code, "GIT_COMMAND_FAILED")
+                self.assertIn(stderr.decode("utf-8"), caught.exception.detail)
 
     def test_temporary_index_includes_all_git_change_classes_without_touching_author_index(self) -> None:
         for name, value in {

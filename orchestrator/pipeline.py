@@ -23,6 +23,15 @@ from .model import (
 
 VERDICT_VALUES = [item.value for item in Verdict]
 
+PUBLIC_ERROR_ACTIONS = {
+    "GIT_DUBIOUS_OWNERSHIP": (
+        "Verify or correct the repository ownership. If the ownership difference "
+        "is intentional and you trust this exact repository, configure trust for "
+        "only that repository outside the orchestrator, then retry. The "
+        "orchestrator did not change Git configuration."
+    )
+}
+
 PLAN_SCHEMA: dict[str, Any] = {
     "type": "object",
     "additionalProperties": False,
@@ -179,7 +188,7 @@ class PipelineOutcome:
     revisions: tuple[RevisionRecord, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        result = {
             "schema": "trace_adv.pipeline_outcome.v1",
             "state": self.state.value,
             "code": self.code,
@@ -193,6 +202,10 @@ class PipelineOutcome:
             },
             "revisions": [item.to_dict() for item in self.revisions],
         }
+        action = PUBLIC_ERROR_ACTIONS.get(self.code)
+        if action is not None:
+            result["action"] = action
+        return result
 
 
 class ThreadRegistry:
