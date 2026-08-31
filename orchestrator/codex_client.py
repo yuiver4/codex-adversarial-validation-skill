@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import queue
 import shutil
@@ -18,6 +19,7 @@ from .process_control import ProcessTreeTerminator
 
 READ_ONLY = "read-only"
 WORKSPACE_WRITE = "workspace-write"
+EFFORT_VALUES = {"none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"}
 
 
 # These notifications add no evidence needed by the parent gate. Asking the
@@ -35,6 +37,7 @@ QUIET_NOTIFICATION_METHODS = (
     "item/reasoning/summaryPartAdded",
     "item/reasoning/summaryTextDelta",
     "item/reasoning/textDelta",
+    "mcpServer/startupStatus/updated",
     "remoteControl/status/changed",
     "thread/started",
     "thread/status/changed",
@@ -64,6 +67,48 @@ class RoleRequest:
     sandbox: str
     base_instructions: str
     isolate_project_instructions: bool = False
+
+
+@dataclass(frozen=True)
+class RoleExecutionProfile:
+    """Requested App Server execution controls for one role."""
+
+    model: str | None = None
+    effort: str | None = None
+    timeout_seconds: float | None = None
+
+    def __post_init__(self) -> None:
+        if self.model is not None and (not isinstance(self.model, str) or not self.model):
+            raise ValueError("model must be a non-empty string")
+        if self.effort is not None and self.effort not in EFFORT_VALUES:
+            raise ValueError("unsupported effort")
+        if self.timeout_seconds is not None and (
+            isinstance(self.timeout_seconds, bool)
+            or not isinstance(self.timeout_seconds, (int, float))
+            or not math.isfinite(self.timeout_seconds)
+            or self.timeout_seconds <= 0
+        ):
+            raise ValueError("timeout_seconds must be positive")
+
+    def overlay(self, override: "RoleExecutionProfile | None") -> "RoleExecutionProfile":
+        if override is None:
+            return self
+        return RoleExecutionProfile(
+            model=override.model if override.model is not None else self.model,
+            effort=override.effort if override.effort is not None else self.effort,
+            timeout_seconds=(
+                override.timeout_seconds
+                if override.timeout_seconds is not None
+                else self.timeout_seconds
+            ),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "model": self.model,
+            "effort": self.effort,
+            "timeout_seconds": self.timeout_seconds,
+        }
 
 
 def _default_command() -> list[str]:
@@ -164,14 +209,34 @@ class CodexRoleClient:
         command: Sequence[str] | None = None,
         *,
         timeout_seconds: float = 120.0,
+        role_execution: Mapping[str, RoleExecutionProfile] | None = None,
     ) -> None:
-        if timeout_seconds <= 0:
+        if not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be positive")
         self._command = tuple(command) if command is not None else None
         if self._command is not None and (not self._command or any(not item for item in self._command)):
             raise ValueError("command must contain non-empty arguments")
         self._timeout_seconds = timeout_seconds
+        self._role_execution = dict(role_execution or {})
+        if any(
+            not isinstance(name, str)
+            or not name
+            or not isinstance(profile, RoleExecutionProfile)
+            for name, profile in self._role_execution.items()
+        ):
+            raise ValueError("role_execution must map names to RoleExecutionProfile")
         self._terminator = ProcessTreeTerminator()
+
+    def _execution_profile(self, role: str) -> RoleExecutionProfile:
+        default = self._role_execution.get("default", RoleExecutionProfile())
+        resolved = default.overlay(self._role_execution.get(role))
+        if resolved.timeout_seconds is None:
+            resolved = RoleExecutionProfile(
+                model=resolved.model,
+                effort=resolved.effort,
+                timeout_seconds=self._timeout_seconds,
+            )
+        return resolved
 
     @property
     def command(self) -> tuple[str, ...]:
@@ -180,6 +245,7 @@ class CodexRoleClient:
     def invoke(self, request: RoleRequest) -> RoleInvocation:
         if request.sandbox not in {READ_ONLY, WORKSPACE_WRITE}:
             raise OrchestratorError("INVALID_ROLE_SANDBOX", request.sandbox)
+        execution = self._execution_profile(request.role)
         launch_root: Path | None = None
         launch_cwd = request.cwd
         if request.isolate_project_instructions:
@@ -218,7 +284,8 @@ class CodexRoleClient:
         )
         stdout_thread.start()
         stderr_thread.start()
-        deadline = time.monotonic() + self._timeout_seconds
+        assert execution.timeout_seconds is not None
+        deadline = time.monotonic() + execution.timeout_seconds
         pending: list[dict[str, Any]] = []
         result: RoleInvocation | None = None
         failure: BaseException | None = None
@@ -252,6 +319,8 @@ class CodexRoleClient:
                 "serviceName": f"trace-adv-{request.role.lower()}",
                 "baseInstructions": request.base_instructions,
             }
+            if execution.model is not None:
+                thread_params["model"] = execution.model
             if request.isolate_project_instructions:
                 isolated_config: dict[str, Any] = {
                     "project_doc_max_bytes": 0,
@@ -281,16 +350,19 @@ class CodexRoleClient:
             prompt = canonical_json_bytes(
                 {"schema": "trace_adv.role_input.v1", "role": request.role, "input": request.payload}
             ).decode("utf-8")
+            turn_params: dict[str, Any] = {
+                "threadId": thread_id,
+                "input": [{"type": "text", "text": prompt}],
+                "outputSchema": dict(request.output_schema),
+            }
+            if execution.effort is not None:
+                turn_params["effort"] = execution.effort
             self._send(
                 process,
                 {
                     "id": 3,
                     "method": "turn/start",
-                    "params": {
-                        "threadId": thread_id,
-                        "input": [{"type": "text", "text": prompt}],
-                        "outputSchema": dict(request.output_schema),
-                    },
+                    "params": turn_params,
                 },
             )
             turn_result = self._await_response(process, messages, 3, deadline, pending)
@@ -328,6 +400,7 @@ class CodexRoleClient:
                 turn_id=turn_id,
                 report=report,
                 observable_events=tuple(observable_events),
+                requested_execution=execution.to_dict(),
             )
         except BaseException as error:
             failure = error
@@ -468,7 +541,7 @@ class CodexRoleClient:
             # is turn/completed; retain only the event class and no message.
             observable_events.append({"method": method})
             return False
-        if method in SANITIZED_INFORMATIONAL_METHODS:
+        if method in SANITIZED_INFORMATIONAL_METHODS or method in QUIET_NOTIFICATION_METHODS:
             observable_events.append({"method": method})
             return False
         raise OrchestratorError("UNEXPECTED_APP_SERVER_EVENT", method)

@@ -6,12 +6,56 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from .codex_client import CodexRoleClient
+from .codex_client import CodexRoleClient, RoleExecutionProfile
 from .model import OrchestratorError, PipelineState
 from .pipeline import PipelineJob, TraceOrchestrator
 
 
-def _load_job(path: Path) -> tuple[PipelineJob, list[str] | None, float]:
+ROLE_EXECUTION_NAMES = {
+    "default",
+    "PLAN_AUTHOR",
+    "PLAN_TRACE",
+    "PLAN_AV",
+    "PLAN_JUDGE",
+    "PLAN_AUTHOR_DELTA",
+    "PLAN_TARGETED_RECHECK",
+    "AUTHOR_IMPLEMENT",
+    "RESULT_TRACE",
+    "RESULT_AV",
+    "RESULT_JUDGE",
+    "RESULT_AUTHOR_DELTA",
+    "RESULT_TARGETED_RECHECK",
+}
+
+
+def _load_role_execution(value: Any) -> dict[str, RoleExecutionProfile]:
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise OrchestratorError("INVALID_JOB_FILE", "role_execution must be an object")
+    profiles: dict[str, RoleExecutionProfile] = {}
+    allowed_fields = {"model", "effort", "timeout_seconds"}
+    for role, raw_profile in value.items():
+        if role not in ROLE_EXECUTION_NAMES or not isinstance(raw_profile, dict):
+            raise OrchestratorError("INVALID_JOB_FILE", "invalid role_execution entry")
+        if set(raw_profile) - allowed_fields:
+            raise OrchestratorError("INVALID_JOB_FILE", "unknown role_execution field")
+        timeout = raw_profile.get("timeout_seconds")
+        if timeout is not None and (
+            isinstance(timeout, bool) or not isinstance(timeout, (int, float))
+        ):
+            raise OrchestratorError("INVALID_JOB_FILE", "invalid role timeout")
+        profiles[role] = RoleExecutionProfile(
+            model=raw_profile.get("model"),
+            effort=raw_profile.get("effort"),
+            timeout_seconds=float(timeout) if timeout is not None else None,
+        )
+    return profiles
+
+
+def _load_job(
+    path: Path,
+) -> tuple[PipelineJob, list[str] | None, float, dict[str, RoleExecutionProfile]]:
     try:
         value: Any = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
@@ -38,6 +82,7 @@ def _load_job(path: Path) -> tuple[PipelineJob, list[str] | None, float]:
         repository = path.parent / repository
     role_timeout = float(value.get("role_timeout_seconds", 120.0))
     measurement_timeout = float(value.get("measurement_timeout_seconds", 120.0))
+    role_execution = _load_role_execution(value.get("role_execution"))
     job = PipelineJob.create(
         repository,
         request,
@@ -46,7 +91,7 @@ def _load_job(path: Path) -> tuple[PipelineJob, list[str] | None, float]:
         base_revision=str(value.get("base_revision", "HEAD")),
         measurement_timeout_seconds=measurement_timeout,
     )
-    return job, command, role_timeout
+    return job, command, role_timeout, role_execution
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -59,8 +104,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     try:
-        job, command, role_timeout = _load_job(args.job.resolve())
-        client = CodexRoleClient(command, timeout_seconds=role_timeout)
+        job, command, role_timeout, role_execution = _load_job(args.job.resolve())
+        client = CodexRoleClient(
+            command,
+            timeout_seconds=role_timeout,
+            role_execution=role_execution,
+        )
         outcome = TraceOrchestrator(client).run(job, apply=args.apply)
     except (OrchestratorError, ValueError) as error:
         code = error.code if isinstance(error, OrchestratorError) else "INVALID_JOB_FILE"

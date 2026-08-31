@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -97,6 +97,7 @@ class RoleInvocation:
     turn_id: str
     report: Mapping[str, Any]
     observable_events: tuple[Mapping[str, Any], ...]
+    requested_execution: Mapping[str, Any] = field(default_factory=dict)
 
     @property
     def report_sha256(self) -> str:

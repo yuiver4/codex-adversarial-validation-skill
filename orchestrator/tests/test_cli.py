@@ -56,6 +56,14 @@ class CliVerticalSliceTests(unittest.TestCase):
                 "from pathlib import Path; print(Path('result.txt').read_text())",
             ],
             "role_timeout_seconds": 5,
+            "role_execution": {
+                "default": {
+                    "model": "test-model",
+                    "effort": "low",
+                    "timeout_seconds": 5
+                },
+                "RESULT_JUDGE": {"effort": "medium"}
+            },
             "measurement_timeout_seconds": 5,
             "app_server_command": [
                 sys.executable,
@@ -81,6 +89,15 @@ class CliVerticalSliceTests(unittest.TestCase):
         self.assertEqual(dry["state"], "DRY_RUN")
         self.assertFalse((self.repository / "result.txt").exists())
         self.assertIsNotNone(dry["receipt"])
+        self.assertEqual(dry["receipt"]["schema"], "trace_adv.parent_release_receipt.v2")
+        self.assertEqual(
+            dry["role_requested_execution"]["PLAN_AUTHOR"],
+            {"model": "test-model", "effort": "low", "timeout_seconds": 5.0},
+        )
+        self.assertEqual(
+            dry["receipt"]["role_requested_execution"]["RESULT_JUDGE"],
+            {"model": "test-model", "effort": "medium", "timeout_seconds": 5.0},
+        )
 
         applied = self._run("--apply")
         self.assertEqual(applied["state"], "APPLIED")
@@ -94,6 +111,22 @@ class CliVerticalSliceTests(unittest.TestCase):
         ]
         self.assertEqual(len(calls), 16)
         self.assertEqual(len({call["thread_id"] for call in calls}), 16)
+        self.assertEqual(calls[0]["thread"]["model"], "test-model")
+        self.assertEqual(calls[0]["turn"]["effort"], "low")
+        result_judges = [call for call in calls if call["role"] == "RESULT_JUDGE"]
+        self.assertTrue(result_judges)
+        self.assertTrue(all(call["turn"]["effort"] == "medium" for call in result_judges))
+
+    def test_invalid_role_execution_is_rejected_before_app_server_start(self) -> None:
+        job = json.loads(self.job.read_text(encoding="utf-8"))
+        job["role_execution"] = {"NOT_A_ROLE": {"effort": "low"}}
+        self.job.write_text(json.dumps(job), encoding="utf-8")
+        output = io.StringIO()
+        with redirect_stdout(output):
+            exit_code = main(["--job", str(self.job)])
+        self.assertEqual(exit_code, 2)
+        self.assertEqual(json.loads(output.getvalue())["code"], "INVALID_JOB_FILE")
+        self.assertFalse(self.calls.exists())
 
     def test_dubious_ownership_reports_safe_action_only(self) -> None:
         sensitive = "C:/Users/private-owner/secret-repository"

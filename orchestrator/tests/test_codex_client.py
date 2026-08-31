@@ -4,11 +4,17 @@ import json
 import os
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from orchestrator.codex_client import CodexRoleClient, READ_ONLY, RoleRequest
+from orchestrator.codex_client import (
+    CodexRoleClient,
+    READ_ONLY,
+    RoleExecutionProfile,
+    RoleRequest,
+)
 from orchestrator.model import OrchestratorError
 from orchestrator.pipeline import AV_SCHEMA, TRACE_SCHEMA
 
@@ -72,6 +78,7 @@ class CodexRoleClientTests(unittest.TestCase):
         timeout: float = 3,
         isolate_project_instructions: bool = False,
         extra_command_arguments: list[str] | None = None,
+        role_execution: dict[str, RoleExecutionProfile] | None = None,
     ):
         self.mapping_path.write_text(
             json.dumps({role: {"report": report}}), encoding="utf-8"
@@ -84,7 +91,11 @@ class CodexRoleClientTests(unittest.TestCase):
             scenario,
             *(extra_command_arguments or []),
         ]
-        return CodexRoleClient(command, timeout_seconds=timeout).invoke(
+        return CodexRoleClient(
+            command,
+            timeout_seconds=timeout,
+            role_execution=role_execution,
+        ).invoke(
             RoleRequest(
                 role=role,
                 payload={"task_contract": {"original_request": "x"}},
@@ -102,6 +113,12 @@ class CodexRoleClientTests(unittest.TestCase):
                 CodexRoleClient().command,
                 ("codex", "--disable", "hooks", "app-server", "--stdio"),
             )
+
+    def test_non_finite_timeouts_are_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            CodexRoleClient(timeout_seconds=float("nan"))
+        with self.assertRaises(ValueError):
+            RoleExecutionProfile(timeout_seconds=float("inf"))
 
     def test_injected_server_receives_ephemeral_never_approved_read_only_thread(self) -> None:
         skill_file = self.root / ".agents" / "skills" / "candidate-poison" / "SKILL.md"
@@ -134,6 +151,27 @@ class CodexRoleClientTests(unittest.TestCase):
         )
         self.assertIn("output_schema", calls[0])
 
+    def test_role_execution_profile_controls_model_effort_and_timeout(self) -> None:
+        result = self._invoke(
+            trace_report(),
+            TRACE_SCHEMA,
+            role_execution={
+                "default": RoleExecutionProfile(
+                    model="test-model",
+                    effort="low",
+                    timeout_seconds=2,
+                ),
+                "PLAN_TRACE": RoleExecutionProfile(effort="medium"),
+            },
+        )
+        call = json.loads(self.log_path.read_text(encoding="utf-8").splitlines()[0])
+        self.assertEqual(call["thread"]["model"], "test-model")
+        self.assertEqual(call["turn"]["effort"], "medium")
+        self.assertEqual(
+            result.requested_execution,
+            {"model": "test-model", "effort": "medium", "timeout_seconds": 2},
+        )
+
     def test_event_ids_and_single_final_message_are_fail_closed(self) -> None:
         report = trace_report()
         for scenario, code in (
@@ -155,6 +193,21 @@ class CodexRoleClientTests(unittest.TestCase):
             )
         self.assertEqual(caught.exception.code, "APP_SERVER_TIMEOUT")
 
+    def test_role_timeout_overrides_longer_client_default(self) -> None:
+        started = time.monotonic()
+        with self.assertRaises(OrchestratorError) as caught:
+            self._invoke(
+                trace_report(),
+                TRACE_SCHEMA,
+                scenario="hang",
+                timeout=5,
+                role_execution={
+                    "PLAN_TRACE": RoleExecutionProfile(timeout_seconds=0.1)
+                },
+            )
+        self.assertEqual(caught.exception.code, "APP_SERVER_TIMEOUT")
+        self.assertLess(time.monotonic() - started, 2)
+
     @unittest.skipUnless(os.name == "nt", "Windows Job Object probe")
     def test_successful_app_server_cannot_leave_detached_child(self) -> None:
         survivor_path = self.root / "survivor.pid"
@@ -173,6 +226,19 @@ class CodexRoleClientTests(unittest.TestCase):
         )
         self.assertEqual(result.report, trace_report())
         self.assertIn("error", [event["method"] for event in result.observable_events])
+
+    def test_mcp_startup_status_is_sanitized_and_does_not_block_turn(self) -> None:
+        result = self._invoke(
+            trace_report(), TRACE_SCHEMA, scenario="mcp_startup_status"
+        )
+        self.assertIn(
+            "mcpServer/startupStatus/updated",
+            [event["method"] for event in result.observable_events],
+        )
+        self.assertNotIn(
+            "private-name-must-not-survive",
+            json.dumps(result.observable_events),
+        )
 
     def test_trace_and_adversary_cannot_emit_release_or_output_verdicts(self) -> None:
         forbidden = ["verdict", "p_out", "p_task", "p_tech", "release_verdict"]

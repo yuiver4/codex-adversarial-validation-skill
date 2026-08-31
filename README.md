@@ -100,10 +100,37 @@ request:
   "amendments": [],
   "base_revision": "HEAD",
   "measurement_argv": ["python", "-B", "-m", "unittest"],
+  "role_execution": {
+    "default": {
+      "model": "gpt-5.6-luna",
+      "effort": "low",
+      "timeout_seconds": 120
+    },
+    "AUTHOR_IMPLEMENT": {
+      "model": "gpt-5.6-sol",
+      "effort": "high",
+      "timeout_seconds": 1800
+    }
+  },
   "role_timeout_seconds": 120,
   "measurement_timeout_seconds": 120
 }
 ```
+
+`role_execution.default` is inherited by every role, and an exact role name can
+override only the fields it needs. Supported fields are `model`, `effort`, and
+`timeout_seconds`. Unknown role names, unknown fields, invalid effort values,
+and non-positive timeouts fail before App Server starts. The top-level
+`role_timeout_seconds` remains the fallback when a role profile does not set a
+timeout.
+
+The runtime sends `model` on `thread/start` and `effort` on `turn/start`. It
+records the **requested** profile for every completed role in the pipeline
+outcome and release receipt. This is not a hard token cap, proof of actual token
+usage, or proof that a provider never rerouted the request. A wall-clock timeout
+can still discard work already spent, so use a cheap, low-effort profile for
+transport canaries and reserve larger profiles for roles whose task requires
+them.
 
 Run the complete pipeline without changing the target repository:
 

@@ -200,6 +200,10 @@ class PipelineOutcome:
             "role_thread_ids": {
                 role: result.thread_id for role, result in self.roles.items()
             },
+            "role_requested_execution": {
+                role: dict(result.requested_execution)
+                for role, result in self.roles.items()
+            },
             "revisions": [item.to_dict() for item in self.revisions],
         }
         action = PUBLIC_ERROR_ACTIONS.get(self.code)
@@ -315,7 +319,7 @@ def _receipt_body(
     if _verdict(roles[result_judge_role]) is not verdict:
         raise OrchestratorError("JUDGE_VERDICT_MISMATCH")
     return {
-        "schema": "trace_adv.parent_release_receipt.v1",
+        "schema": "trace_adv.parent_release_receipt.v2",
         "assurance": "non-cryptographic-parent-receipt",
         "contract_sha256": contract.sha256,
         "base_commit": candidate.base_commit,
@@ -331,6 +335,10 @@ def _receipt_body(
         },
         "role_event_digests": {
             role: invocation.observable_event_digest
+            for role, invocation in sorted(roles.items())
+        },
+        "role_requested_execution": {
+            role: dict(invocation.requested_execution)
             for role, invocation in sorted(roles.items())
         },
         "verdict": verdict.value,

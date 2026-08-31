@@ -67,6 +67,10 @@ for raw_line in sys.stdin:
                 "server_cwd": os.getcwd(),
                 "initialize": initialize_params,
                 "thread": thread_params,
+                "turn": {
+                    "model": request["params"].get("model"),
+                    "effort": request["params"].get("effort"),
+                },
                 "input": role_input["input"],
                 "output_schema": request["params"].get("outputSchema"),
             }
@@ -81,6 +85,17 @@ for raw_line in sys.stdin:
                 {
                     "method": "error",
                     "params": {"error": {"message": "Reconnecting... 1/5"}},
+                }
+            )
+        if scenario == "mcp_startup_status":
+            emit(
+                {
+                    "method": "mcpServer/startupStatus/updated",
+                    "params": {
+                        "threadId": thread_id,
+                        "name": "private-name-must-not-survive",
+                        "status": "ready",
+                    },
                 }
             )
         event_thread = "wrong-thread" if scenario == "wrong_correlation" else thread_id
