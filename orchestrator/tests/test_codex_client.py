@@ -10,10 +10,12 @@ from pathlib import Path
 from unittest.mock import patch
 
 from orchestrator.codex_client import (
+    VALIDATION_EXECUTION_ROLES,
     CodexRoleClient,
     READ_ONLY,
     RoleExecutionProfile,
     RoleRequest,
+    resolve_execution_profile,
 )
 from orchestrator.model import OrchestratorError
 from orchestrator.pipeline import AV_SCHEMA, TRACE_SCHEMA
@@ -91,6 +93,12 @@ class CodexRoleClientTests(unittest.TestCase):
             scenario,
             *(extra_command_arguments or []),
         ]
+        if role_execution is None:
+            role_execution = {
+                "validation": RoleExecutionProfile(
+                    model="test-model", effort="low"
+                )
+            }
         return CodexRoleClient(
             command,
             timeout_seconds=timeout,
@@ -172,6 +180,65 @@ class CodexRoleClientTests(unittest.TestCase):
             {"model": "test-model", "effort": "medium", "timeout_seconds": 2},
         )
 
+    def test_validation_group_is_explicit_and_exact_role_wins_fieldwise(self) -> None:
+        profiles = {
+            "default": RoleExecutionProfile(
+                model="author-model", effort="low", timeout_seconds=41
+            ),
+            "validation": RoleExecutionProfile(
+                model="gpt-5.6-sol", effort="high", timeout_seconds=19
+            ),
+            "RESULT_JUDGE": RoleExecutionProfile(
+                model="user-selected-model", timeout_seconds=7
+            ),
+        }
+
+        for role in VALIDATION_EXECUTION_ROLES - {"RESULT_JUDGE"}:
+            with self.subTest(role=role):
+                self.assertEqual(
+                    resolve_execution_profile(role, profiles, 120).to_dict(),
+                    {
+                        "model": "gpt-5.6-sol",
+                        "effort": "high",
+                        "timeout_seconds": 19,
+                    },
+                )
+        self.assertEqual(
+            resolve_execution_profile("RESULT_JUDGE", profiles, 120).to_dict(),
+            {
+                "model": "user-selected-model",
+                "effort": "high",
+                "timeout_seconds": 7,
+            },
+        )
+        self.assertEqual(
+            resolve_execution_profile("AUTHOR_IMPLEMENT", profiles, 120).to_dict(),
+            {"model": "author-model", "effort": "low", "timeout_seconds": 41},
+        )
+
+    def test_no_hidden_validation_model_is_selected(self) -> None:
+        for role in VALIDATION_EXECUTION_ROLES:
+            with self.subTest(role=role):
+                profile = resolve_execution_profile(role, {}, 120)
+                self.assertIsNone(profile.model)
+                self.assertIsNone(profile.effort)
+                self.assertEqual(profile.timeout_seconds, 120)
+
+    def test_direct_validation_roles_require_explicit_model_and_effort(self) -> None:
+        for role in VALIDATION_EXECUTION_ROLES:
+            with self.subTest(role=role):
+                with self.assertRaises(OrchestratorError) as caught:
+                    self._invoke(
+                        trace_report(),
+                        TRACE_SCHEMA,
+                        role=role,
+                        role_execution={},
+                    )
+                self.assertEqual(
+                    caught.exception.code, "INVALID_ROLE_EXECUTION_PROFILE"
+                )
+        self.assertFalse(self.log_path.exists())
+
     def test_event_ids_and_single_final_message_are_fail_closed(self) -> None:
         report = trace_report()
         for scenario, code in (
@@ -202,6 +269,9 @@ class CodexRoleClientTests(unittest.TestCase):
                 scenario="hang",
                 timeout=5,
                 role_execution={
+                    "validation": RoleExecutionProfile(
+                        model="test-model", effort="low"
+                    ),
                     "PLAN_TRACE": RoleExecutionProfile(timeout_seconds=0.1)
                 },
             )
@@ -226,6 +296,11 @@ class CodexRoleClientTests(unittest.TestCase):
         )
         self.assertEqual(result.report, trace_report())
         self.assertIn("error", [event["method"] for event in result.observable_events])
+
+    def test_model_reroute_is_fail_closed(self) -> None:
+        with self.assertRaises(OrchestratorError) as caught:
+            self._invoke(trace_report(), TRACE_SCHEMA, scenario="model_rerouted")
+        self.assertEqual(caught.exception.code, "MODEL_REROUTED")
 
     def test_mcp_startup_status_is_sanitized_and_does_not_block_turn(self) -> None:
         result = self._invoke(

@@ -21,6 +21,19 @@ READ_ONLY = "read-only"
 WORKSPACE_WRITE = "workspace-write"
 EFFORT_VALUES = {"none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"}
 
+VALIDATION_EXECUTION_ROLES = frozenset(
+    {
+        "PLAN_TRACE",
+        "PLAN_AV",
+        "PLAN_JUDGE",
+        "PLAN_TARGETED_RECHECK",
+        "RESULT_TRACE",
+        "RESULT_AV",
+        "RESULT_JUDGE",
+        "RESULT_TARGETED_RECHECK",
+    }
+)
+
 
 # These notifications add no evidence needed by the parent gate. Asking the
 # server not to emit them keeps the client focused on item boundaries and the
@@ -50,7 +63,6 @@ QUIET_NOTIFICATION_METHODS = (
 SANITIZED_INFORMATIONAL_METHODS = {
     "configWarning",
     "deprecationNotice",
-    "model/rerouted",
     "model/verification",
     "warning",
     "windows/worldWritableWarning",
@@ -109,6 +121,26 @@ class RoleExecutionProfile:
             "effort": self.effort,
             "timeout_seconds": self.timeout_seconds,
         }
+
+
+def resolve_execution_profile(
+    role: str,
+    role_execution: Mapping[str, RoleExecutionProfile],
+    fallback_timeout_seconds: float,
+) -> RoleExecutionProfile:
+    """Resolve explicit job profiles without choosing a hidden model or effort."""
+
+    resolved = RoleExecutionProfile().overlay(role_execution.get("default"))
+    if role in VALIDATION_EXECUTION_ROLES:
+        resolved = resolved.overlay(role_execution.get("validation"))
+    resolved = resolved.overlay(role_execution.get(role))
+    if resolved.timeout_seconds is None:
+        resolved = RoleExecutionProfile(
+            model=resolved.model,
+            effort=resolved.effort,
+            timeout_seconds=fallback_timeout_seconds,
+        )
+    return resolved
 
 
 def _default_command() -> list[str]:
@@ -228,15 +260,9 @@ class CodexRoleClient:
         self._terminator = ProcessTreeTerminator()
 
     def _execution_profile(self, role: str) -> RoleExecutionProfile:
-        default = self._role_execution.get("default", RoleExecutionProfile())
-        resolved = default.overlay(self._role_execution.get(role))
-        if resolved.timeout_seconds is None:
-            resolved = RoleExecutionProfile(
-                model=resolved.model,
-                effort=resolved.effort,
-                timeout_seconds=self._timeout_seconds,
-            )
-        return resolved
+        return resolve_execution_profile(
+            role, self._role_execution, self._timeout_seconds
+        )
 
     @property
     def command(self) -> tuple[str, ...]:
@@ -246,6 +272,10 @@ class CodexRoleClient:
         if request.sandbox not in {READ_ONLY, WORKSPACE_WRITE}:
             raise OrchestratorError("INVALID_ROLE_SANDBOX", request.sandbox)
         execution = self._execution_profile(request.role)
+        if request.role in VALIDATION_EXECUTION_ROLES and (
+            execution.model is None or execution.effort is None
+        ):
+            raise OrchestratorError("INVALID_ROLE_EXECUTION_PROFILE")
         launch_root: Path | None = None
         launch_cwd = request.cwd
         if request.isolate_project_instructions:
@@ -541,6 +571,8 @@ class CodexRoleClient:
             # is turn/completed; retain only the event class and no message.
             observable_events.append({"method": method})
             return False
+        if method == "model/rerouted":
+            raise OrchestratorError("MODEL_REROUTED")
         if method in SANITIZED_INFORMATIONAL_METHODS or method in QUIET_NOTIFICATION_METHODS:
             observable_events.append({"method": method})
             return False

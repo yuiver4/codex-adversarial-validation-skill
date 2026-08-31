@@ -102,35 +102,43 @@ request:
   "measurement_argv": ["python", "-B", "-m", "unittest"],
   "role_execution": {
     "default": {
-      "model": "gpt-5.6-luna",
-      "effort": "low",
-      "timeout_seconds": 120
+      "model": "gpt-5.6-terra",
+      "effort": "medium",
+      "timeout_seconds": 300
     },
-    "AUTHOR_IMPLEMENT": {
+    "validation": {
       "model": "gpt-5.6-sol",
       "effort": "high",
-      "timeout_seconds": 1800
+      "timeout_seconds": 900
     }
   },
-  "role_timeout_seconds": 120,
+  "role_timeout_seconds": 300,
   "measurement_timeout_seconds": 120
 }
 ```
 
-`role_execution.default` is inherited by every role, and an exact role name can
-override only the fields it needs. Supported fields are `model`, `effort`, and
+This quality-oriented example chooses `gpt-5.6-sol/high` explicitly for
+`PLAN_TRACE`, `PLAN_AV`, `PLAN_JUDGE`, `PLAN_TARGETED_RECHECK`, `RESULT_TRACE`,
+`RESULT_AV`, `RESULT_JUDGE`, and `RESULT_TARGETED_RECHECK`. The runtime has no
+hidden model or effort default. Every validation role must resolve to an
+explicit model and effort before App Server starts.
+
+Profile fields are resolved in this order: exact role, `validation` group for
+the eight roles above, then `default`. More specific profiles override only the
+fields they contain. Supported fields are `model`, `effort`, and
 `timeout_seconds`. Unknown role names, unknown fields, invalid effort values,
-and non-positive timeouts fail before App Server starts. The top-level
-`role_timeout_seconds` remains the fallback when a role profile does not set a
-timeout.
+missing validation model/effort, and non-positive timeouts fail before App
+Server starts. The top-level `role_timeout_seconds` remains the timeout fallback.
+The numbers above are an example, not measured universal timeout guidance.
 
 The runtime sends `model` on `thread/start` and `effort` on `turn/start`. It
 records the **requested** profile for every completed role in the pipeline
-outcome and release receipt. This is not a hard token cap, proof of actual token
-usage, or proof that a provider never rerouted the request. A wall-clock timeout
-can still discard work already spent, so use a cheap, low-effort profile for
-transport canaries and reserve larger profiles for roles whose task requires
-them.
+outcome and release receipt. This is the locally resolved request sent to App
+Server, not proof of the provider-effective model, actual token usage, or a hard
+token cap. A `model/rerouted` event blocks the run. Absence of that event still
+does not prove provider internals. A wall-clock timeout can discard work already
+spent. If a transport canary is needed, select `gpt-5.6-luna/low` explicitly in
+that synthetic canary job; do not reuse it as the full TRACE validation profile.
 
 Run the complete pipeline without changing the target repository:
 

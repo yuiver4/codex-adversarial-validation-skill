@@ -98,6 +98,18 @@ for raw_line in sys.stdin:
                     },
                 }
             )
+        if scenario == "model_rerouted":
+            emit(
+                {
+                    "method": "model/rerouted",
+                    "params": {
+                        "threadId": thread_id,
+                        "turnId": turn_id,
+                        "fromModel": "requested-model",
+                        "toModel": "different-model",
+                    },
+                }
+            )
         event_thread = "wrong-thread" if scenario == "wrong_correlation" else thread_id
         report = specification.get("report", mapping.get("default_report", {}))
         emit(

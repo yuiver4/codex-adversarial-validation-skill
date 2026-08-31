@@ -6,13 +6,19 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from .codex_client import CodexRoleClient, RoleExecutionProfile
+from .codex_client import (
+    VALIDATION_EXECUTION_ROLES,
+    CodexRoleClient,
+    RoleExecutionProfile,
+    resolve_execution_profile,
+)
 from .model import OrchestratorError, PipelineState
 from .pipeline import PipelineJob, TraceOrchestrator
 
 
 ROLE_EXECUTION_NAMES = {
     "default",
+    "validation",
     "PLAN_AUTHOR",
     "PLAN_TRACE",
     "PLAN_AV",
@@ -83,6 +89,13 @@ def _load_job(
     role_timeout = float(value.get("role_timeout_seconds", 120.0))
     measurement_timeout = float(value.get("measurement_timeout_seconds", 120.0))
     role_execution = _load_role_execution(value.get("role_execution"))
+    for role in VALIDATION_EXECUTION_ROLES:
+        profile = resolve_execution_profile(role, role_execution, role_timeout)
+        if profile.model is None or profile.effort is None:
+            raise OrchestratorError(
+                "INVALID_JOB_FILE",
+                "validation roles require an explicit model and effort",
+            )
     job = PipelineJob.create(
         repository,
         request,

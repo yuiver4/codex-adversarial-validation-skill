@@ -58,11 +58,18 @@ class CliVerticalSliceTests(unittest.TestCase):
             "role_timeout_seconds": 5,
             "role_execution": {
                 "default": {
-                    "model": "test-model",
+                    "model": "author-model",
                     "effort": "low",
                     "timeout_seconds": 5
                 },
-                "RESULT_JUDGE": {"effort": "medium"}
+                "validation": {
+                    "model": "gpt-5.6-sol",
+                    "effort": "high"
+                },
+                "RESULT_JUDGE": {
+                    "model": "user-selected-model",
+                    "effort": "medium"
+                }
             },
             "measurement_timeout_seconds": 5,
             "app_server_command": [
@@ -94,11 +101,19 @@ class CliVerticalSliceTests(unittest.TestCase):
         self.assertEqual(set(dry["role_report_hashes"]), set(dry["role_thread_ids"]))
         self.assertEqual(
             dry["role_requested_execution"]["PLAN_AUTHOR"],
-            {"model": "test-model", "effort": "low", "timeout_seconds": 5.0},
+            {"model": "author-model", "effort": "low", "timeout_seconds": 5.0},
+        )
+        self.assertEqual(
+            dry["role_requested_execution"]["PLAN_TRACE"],
+            {"model": "gpt-5.6-sol", "effort": "high", "timeout_seconds": 5.0},
         )
         self.assertEqual(
             dry["receipt"]["role_requested_execution"]["RESULT_JUDGE"],
-            {"model": "test-model", "effort": "medium", "timeout_seconds": 5.0},
+            {
+                "model": "user-selected-model",
+                "effort": "medium",
+                "timeout_seconds": 5.0,
+            },
         )
 
         applied = self._run("--apply")
@@ -113,10 +128,22 @@ class CliVerticalSliceTests(unittest.TestCase):
         ]
         self.assertEqual(len(calls), 16)
         self.assertEqual(len({call["thread_id"] for call in calls}), 16)
-        self.assertEqual(calls[0]["thread"]["model"], "test-model")
+        self.assertEqual(calls[0]["thread"]["model"], "author-model")
         self.assertEqual(calls[0]["turn"]["effort"], "low")
+        plan_traces = [call for call in calls if call["role"] == "PLAN_TRACE"]
+        self.assertTrue(plan_traces)
+        self.assertTrue(
+            all(call["thread"]["model"] == "gpt-5.6-sol" for call in plan_traces)
+        )
+        self.assertTrue(all(call["turn"]["effort"] == "high" for call in plan_traces))
         result_judges = [call for call in calls if call["role"] == "RESULT_JUDGE"]
         self.assertTrue(result_judges)
+        self.assertTrue(
+            all(
+                call["thread"]["model"] == "user-selected-model"
+                for call in result_judges
+            )
+        )
         self.assertTrue(all(call["turn"]["effort"] == "medium" for call in result_judges))
 
     def test_role_reports_require_explicit_local_output_flag(self) -> None:
@@ -127,6 +154,17 @@ class CliVerticalSliceTests(unittest.TestCase):
     def test_invalid_role_execution_is_rejected_before_app_server_start(self) -> None:
         job = json.loads(self.job.read_text(encoding="utf-8"))
         job["role_execution"] = {"NOT_A_ROLE": {"effort": "low"}}
+        self.job.write_text(json.dumps(job), encoding="utf-8")
+        output = io.StringIO()
+        with redirect_stdout(output):
+            exit_code = main(["--job", str(self.job)])
+        self.assertEqual(exit_code, 2)
+        self.assertEqual(json.loads(output.getvalue())["code"], "INVALID_JOB_FILE")
+        self.assertFalse(self.calls.exists())
+
+    def test_missing_explicit_validation_model_is_rejected_before_start(self) -> None:
+        job = json.loads(self.job.read_text(encoding="utf-8"))
+        job["role_execution"] = {}
         self.job.write_text(json.dumps(job), encoding="utf-8")
         output = io.StringIO()
         with redirect_stdout(output):

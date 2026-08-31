@@ -91,6 +91,12 @@ attacks outcome claims, Measurement executes bound requests, and the Judge
 alone owns `P-out`, `P-task`, `P-tech`, and release. Do not merge those roles or
 turn the TRACE report into a release decision.
 
+The parent runtime owns model selection. Preserve an explicit user-selected
+model and reasoning effort for each validation role; do not silently replace a
+quality-oriented review model with a cheaper transport-canary model. Treat a
+locally requested profile as execution intent, not proof of provider-effective
+routing or observed token usage.
+
 If a fresh Analyst is unavailable, perform the same bounded analysis inline
 and mark Analyst independence `UNVERIFIED`. Do not build a new transport,
 hook, privacy system, oracle framework, or runtime merely to make the review
