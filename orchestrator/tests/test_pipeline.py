@@ -105,12 +105,23 @@ class PipelineTests(unittest.TestCase):
             {"task_contract", "candidate_plan", "parent_evidence"},
         )
         self.assertEqual(
+            set(requests["PLAN_AV"].payload["candidate_plan"]),
+            {"summary", "plan"},
+        )
+        self.assertNotIn(
+            "action_summary", requests["PLAN_AV"].payload["candidate_plan"]
+        )
+        self.assertEqual(
             set(requests["PLAN_JUDGE"].payload),
             {"task_contract", "candidate_identity", "reports", "parent_evidence"},
         )
         self.assertEqual(
             requests["PLAN_JUDGE"].output_schema["properties"]["revision_scope"]["items"]["enum"],
-            ["summary", "plan", "action_summary"],
+            ["summary", "plan"],
+        )
+        self.assertEqual(
+            set(requests["AUTHOR_IMPLEMENT"].payload["accepted_plan"]),
+            {"summary", "plan"},
         )
 
         self.assertEqual(
@@ -155,7 +166,11 @@ class PipelineTests(unittest.TestCase):
         self.assertIn("revision_scope", judge_properties)
 
     def test_plan_revise_uses_exact_top_level_field_scope(self) -> None:
-        revised_plan = {**PLAN_REPORT, "plan": [*PLAN_REPORT["plan"], "verify exact bytes"]}
+        revised_plan = {
+            **PLAN_REPORT,
+            "plan": [*PLAN_REPORT["plan"], "verify exact bytes"],
+            "action_summary": ["revised plan process only"],
+        }
         runner = standard_runner(
             reports={
                 "PLAN_JUDGE": judge_report("REVISE", ["plan"]),
@@ -168,6 +183,7 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(len(outcome.revisions), 1)
         self.assertEqual(outcome.revisions[0].gate, "PLAN")
         self.assertEqual(outcome.revisions[0].scope, ("plan",))
+        self.assertEqual(outcome.revisions[0].delta, ("plan",))
 
     def test_default_is_dry_run_and_apply_is_explicit(self) -> None:
         _, dry = self._dry_outcome()

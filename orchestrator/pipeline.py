@@ -121,7 +121,7 @@ JUDGE_SCHEMA: dict[str, Any] = {
     ],
 }
 
-PLAN_REVISION_FIELDS = ["summary", "plan", "action_summary"]
+PLAN_REVISION_FIELDS = ["summary", "plan"]
 PLAN_JUDGE_SCHEMA: dict[str, Any] = {
     **JUDGE_SCHEMA,
     "properties": {
@@ -244,6 +244,12 @@ class ThreadRegistry:
 
 def _artifact_identity(kind: str, value: Mapping[str, Any]) -> dict[str, str]:
     return {"kind": kind, "sha256": hash_json(value)}
+
+
+def _plan_artifact(value: Mapping[str, Any]) -> dict[str, Any]:
+    """Separate the proposed plan from the Plan Author's observed action record."""
+
+    return {"summary": value["summary"], "plan": list(value["plan"])}
 
 
 def _verdict(invocation: RoleInvocation) -> Verdict:
@@ -512,6 +518,11 @@ class TraceOrchestrator:
                 "target_root_verified": True,
                 "target_clean_at_start": True,
                 "candidate_freeze_required": True,
+                "candidate_freeze": {
+                    "author_staging_required": False,
+                    "parent_captures_tracked_untracked_deleted_renamed_and_binary_changes": True,
+                    "measurement_receives_candidate_in_disposable_index": True,
+                },
                 "measurement_plan": {
                     "argv": list(job.measurement_argv),
                     "timeout_seconds": job.measurement_timeout_seconds,
@@ -530,7 +541,7 @@ class TraceOrchestrator:
                 READ_ONLY,
                 "Produce only an implementation plan. Read files if needed; never modify the workspace. Treat the supplied parent evidence as already checked by the orchestrator and plan task-relevant implementation and validation rather than repeating parent preflight.",
             )
-            plan = dict(plan_author.report)
+            plan = _plan_artifact(plan_author.report)
             plan_identity = _artifact_identity("plan", plan)
             plan_trace = self._invoke(
                 PipelineState.PLAN_TRACE,
@@ -539,13 +550,13 @@ class TraceOrchestrator:
                     "candidate_identity": plan_identity,
                     "candidate_plan": plan,
                     "observable_events": list(plan_author.observable_events),
-                    "action_summary": list(plan.get("action_summary", [])),
+                    "action_summary": list(plan_author.report.get("action_summary", [])),
                     "parent_evidence": parent_evidence,
                 },
                 TRACE_SCHEMA,
                 repository.path,
                 READ_ONLY,
-                "Act as the TRACE Analyst under the trace-adversarial-validation contract. This is the Plan Gate: implementation has not run yet. Review only the supplied observable plan-formation process, emit P-proc only, and do not mark it unverified merely because implementation evidence does not yet exist. Do not modify files or infer hidden chain-of-thought.",
+                "Act as the TRACE Analyst under the trace-adversarial-validation contract. This is the Plan Gate: implementation has not run yet. Review only the supplied observable plan-formation process, emit P-proc only, and do not mark it unverified merely because implementation evidence does not yet exist. action_summary describes completed Plan Author actions and is not a future implementation constraint. Do not modify files or infer hidden chain-of-thought.",
             )
             plan_av = self._invoke(
                 PipelineState.PLAN_AV,
@@ -573,7 +584,7 @@ class TraceOrchestrator:
                 PLAN_JUDGE_SCHEMA,
                 repository.path,
                 READ_ONLY,
-                "Judge the plan from the contract, candidate identity, parent evidence, and independent reports only. Emit the gate verdict plus separate P-out, P-task, and P-tech verdicts. If REVISE, revision_scope must contain only exact top-level plan field names: summary, plan, or action_summary. Do not modify files or require implementation evidence at the Plan Gate.",
+                "Judge the plan from the contract, candidate identity, parent evidence, and independent reports only. Emit the gate verdict plus separate P-out, P-task, and P-tech verdicts. The Plan Author's action_summary is process evidence, not part of the candidate plan. If REVISE, revision_scope must contain only exact top-level plan field names: summary or plan. Do not modify files, require Author staging, or require implementation evidence at the Plan Gate.",
             )
             plan_verdict = _verdict(plan_judge)
             if plan_verdict is Verdict.REVISE:
@@ -791,7 +802,7 @@ class TraceOrchestrator:
             READ_ONLY,
             "Make exactly one plan-only delta limited to the supplied scope. Never modify files.",
         )
-        revised_plan = dict(delta_author.report)
+        revised_plan = _plan_artifact(delta_author.report)
         delta = _changed_top_level_fields(plan, revised_plan)
         if not delta or not ensure_within_scope(delta, scope):
             return self._outcome(PipelineState.FULL_REVIEW_REQUIRED, "FULL_REVIEW_REQUIRED")
@@ -819,7 +830,7 @@ class TraceOrchestrator:
             PLAN_JUDGE_SCHEMA,
             repository.path,
             READ_ONLY,
-            "Perform the single targeted recheck of the revised finding only. Inspect the supplied revised plan, emit the gate verdict plus separate P-out, P-task, and P-tech verdicts, and do not start a full review or modify files. If still REVISE, revision_scope may contain only summary, plan, or action_summary.",
+            "Perform the single targeted recheck of the revised finding only. Inspect the supplied revised plan, emit the gate verdict plus separate P-out, P-task, and P-tech verdicts, and do not start a full review or modify files. Plan Author process summaries are not future implementation constraints. If still REVISE, revision_scope may contain only summary or plan.",
         )
         record = RevisionRecord(
             gate="PLAN",
