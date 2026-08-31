@@ -93,6 +93,27 @@ class PipelineTests(unittest.TestCase):
             self.assertIn("repository-local skills", requests[role].base_instructions)
 
         self.assertEqual(
+            set(requests["PLAN_AUTHOR"].payload),
+            {"task_contract", "base_commit", "parent_evidence"},
+        )
+        self.assertEqual(
+            requests["PLAN_AUTHOR"].payload["parent_evidence"]["measurement_plan"]["argv"],
+            list(self.job.measurement_argv),
+        )
+        self.assertEqual(
+            set(requests["PLAN_AV"].payload),
+            {"task_contract", "candidate_plan", "parent_evidence"},
+        )
+        self.assertEqual(
+            set(requests["PLAN_JUDGE"].payload),
+            {"task_contract", "candidate_identity", "reports", "parent_evidence"},
+        )
+        self.assertEqual(
+            requests["PLAN_JUDGE"].output_schema["properties"]["revision_scope"]["items"]["enum"],
+            ["summary", "plan", "action_summary"],
+        )
+
+        self.assertEqual(
             set(requests["RESULT_TRACE"].payload),
             {"task_contract", "candidate_identity", "observable_events", "action_summary"},
         )
@@ -132,6 +153,21 @@ class PipelineTests(unittest.TestCase):
         self.assertIn("verdict", judge_properties)
         self.assertTrue({"p_out", "p_task", "p_tech"}.issubset(judge_properties))
         self.assertIn("revision_scope", judge_properties)
+
+    def test_plan_revise_uses_exact_top_level_field_scope(self) -> None:
+        revised_plan = {**PLAN_REPORT, "plan": [*PLAN_REPORT["plan"], "verify exact bytes"]}
+        runner = standard_runner(
+            reports={
+                "PLAN_JUDGE": judge_report("REVISE", ["plan"]),
+                "PLAN_AUTHOR_DELTA": revised_plan,
+                "PLAN_TARGETED_RECHECK": judge_report("PASS"),
+            }
+        )
+        outcome = TraceOrchestrator(runner).run(self.job)
+        self.assertEqual(outcome.state, PipelineState.DRY_RUN, outcome.to_dict())
+        self.assertEqual(len(outcome.revisions), 1)
+        self.assertEqual(outcome.revisions[0].gate, "PLAN")
+        self.assertEqual(outcome.revisions[0].scope, ("plan",))
 
     def test_default_is_dry_run_and_apply_is_explicit(self) -> None:
         _, dry = self._dry_outcome()
