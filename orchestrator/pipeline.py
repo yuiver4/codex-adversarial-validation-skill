@@ -518,13 +518,20 @@ class TraceOrchestrator:
                 "target_root_verified": True,
                 "target_clean_at_start": True,
                 "candidate_freeze_required": True,
-                "candidate_freeze": {
-                    "author_staging_required": False,
-                    "parent_captures_tracked_untracked_deleted_renamed_and_binary_changes": True,
-                    "measurement_receives_candidate_in_disposable_index": True,
+                "responsibility_boundary": {
+                    "author": [
+                        "implement the accepted task plan in the isolated worktree",
+                        "report observable implementation actions",
+                    ],
+                    "parent_orchestrator": [
+                        "verify target root, base revision, and clean start",
+                        "freeze all candidate change classes without Author staging",
+                        "materialize the frozen candidate for measurement and review",
+                        "bind measurement, role reports, verdict, and release receipt",
+                    ],
                 },
-                "measurement_plan": {
-                    "argv": list(job.measurement_argv),
+                "measurement_executor": {
+                    "configured": bool(job.measurement_argv),
                     "timeout_seconds": job.measurement_timeout_seconds,
                 },
             }
@@ -539,7 +546,7 @@ class TraceOrchestrator:
                 PLAN_SCHEMA,
                 repository.path,
                 READ_ONLY,
-                "Produce only an implementation plan. Read files if needed; never modify the workspace. Treat the supplied parent evidence as already checked by the orchestrator and plan task-relevant implementation and validation rather than repeating parent preflight.",
+                "Produce only an implementation plan. Read files if needed; never modify the workspace. Treat the supplied parent evidence as already checked by the orchestrator. Plan only Author-owned task work and task-relevant validation; never add parent-orchestrator staging, freezing, worktree, receipt, or release mechanics to the candidate plan.",
             )
             plan = _plan_artifact(plan_author.report)
             plan_identity = _artifact_identity("plan", plan)
@@ -568,7 +575,7 @@ class TraceOrchestrator:
                 AV_SCHEMA,
                 repository.path,
                 READ_ONLY,
-                "You are assigned the exact orchestrated-adversary role under the adversarial-validation contract. Attack only the supplied contract and candidate plan; report evidence without issuing any gate or release verdict. Treat parent_evidence as orchestrator-verified unless the supplied evidence directly contradicts it. Do not modify files or turn parent preflight into plan work.",
+                "You are assigned the exact orchestrated-adversary role under the adversarial-validation contract. Attack only Author-owned task work in the supplied contract and candidate plan; report evidence without issuing any gate or release verdict. Treat parent_evidence as orchestrator-verified unless directly contradicted. Parent staging, freezing, disposable worktrees, measurement materialization, receipts, and release are outside the candidate plan and must not be requested as Author revisions. Do not modify files.",
             )
             plan_judge = self._invoke(
                 PipelineState.PLAN_JUDGE,
@@ -584,7 +591,7 @@ class TraceOrchestrator:
                 PLAN_JUDGE_SCHEMA,
                 repository.path,
                 READ_ONLY,
-                "Judge the plan from the contract, candidate identity, parent evidence, and independent reports only. Emit the gate verdict plus separate P-out, P-task, and P-tech verdicts. The Plan Author's action_summary is process evidence, not part of the candidate plan. If REVISE, revision_scope must contain only exact top-level plan field names: summary or plan. Do not modify files, require Author staging, or require implementation evidence at the Plan Gate.",
+                "Judge only Author-owned task work from the contract, candidate identity, parent evidence, and independent reports. Disregard requested revisions that move parent staging, freezing, disposable-worktree, measurement-materialization, receipt, or release responsibilities into the Author plan. Emit the gate verdict plus separate P-out, P-task, and P-tech verdicts. The Plan Author's action_summary is process evidence, not part of the candidate plan. If REVISE, revision_scope must contain only summary or plan. Do not require implementation evidence at the Plan Gate.",
             )
             plan_verdict = _verdict(plan_judge)
             if plan_verdict is Verdict.REVISE:

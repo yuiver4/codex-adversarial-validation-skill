@@ -97,8 +97,19 @@ class PipelineTests(unittest.TestCase):
             {"task_contract", "base_commit", "parent_evidence"},
         )
         self.assertEqual(
-            requests["PLAN_AUTHOR"].payload["parent_evidence"]["measurement_plan"]["argv"],
-            list(self.job.measurement_argv),
+            requests["PLAN_AUTHOR"].payload["parent_evidence"]["measurement_executor"],
+            {"configured": True, "timeout_seconds": 5},
+        )
+        parent_boundary = requests["PLAN_AV"].payload["parent_evidence"][
+            "responsibility_boundary"
+        ]
+        self.assertTrue(parent_boundary["author"])
+        self.assertTrue(parent_boundary["parent_orchestrator"])
+        self.assertNotIn(
+            "measurement_plan", requests["PLAN_AV"].payload["parent_evidence"]
+        )
+        self.assertNotIn(
+            "measurement_argv", requests["PLAN_AV"].payload["parent_evidence"]
         )
         self.assertEqual(
             set(requests["PLAN_AV"].payload),
@@ -136,6 +147,10 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(requests["RESULT_TRACE"].cwd, requests["RESULT_AV"].cwd)
         self.assertNotIn("author", requests["RESULT_AV"].payload)
         self.assertNotIn("trace", requests["RESULT_AV"].payload)
+        self.assertEqual(
+            requests["RESULT_AV"].payload["measurement"]["argv"],
+            list(self.job.measurement_argv),
+        )
         self.assertIn("orchestrated-adversary", requests["RESULT_AV"].base_instructions)
         self.assertEqual(
             set(requests["RESULT_JUDGE"].payload),

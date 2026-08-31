@@ -199,6 +199,13 @@ frozen candidate rather than an encoded summary. The Judge receives the task
 contract, candidate identity, independent reports, and measurement; it does
 not receive Author reasoning or raw chain-of-thought.
 
+At the Plan Gate, Author-owned task planning is kept separate from parent
+runtime mechanics. Plan roles receive the verified responsibility boundary and
+the existence/timeout of the Measurement Executor, but not its command line or
+disposable-index implementation. The Result Adversary and Judge receive the
+actual bound measurement report after execution, which is the stage where the
+measurement command and result are attacked.
+
 Reviewer threads also set the candidate project to untrusted, disable
 project-document loading, and add `enabled: false` overrides for every
 repository-local Skill found under the candidate's `.agents/skills`. Candidate-
