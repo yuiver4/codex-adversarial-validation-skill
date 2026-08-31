@@ -199,6 +199,13 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(outcome.revisions[0].gate, "PLAN")
         self.assertEqual(outcome.revisions[0].scope, ("plan",))
         self.assertEqual(outcome.revisions[0].delta, ("plan",))
+        requests = {item.role: item for item in runner.requests}
+        delta_boundary = requests["PLAN_AUTHOR_DELTA"].payload["parent_evidence"]
+        recheck_boundary = requests["PLAN_TARGETED_RECHECK"].payload["parent_evidence"]
+        self.assertEqual(delta_boundary, recheck_boundary)
+        self.assertIn("responsibility_boundary", delta_boundary)
+        self.assertNotIn("measurement_plan", delta_boundary)
+        self.assertNotIn("measurement_argv", delta_boundary)
 
     def test_default_is_dry_run_and_apply_is_explicit(self) -> None:
         _, dry = self._dry_outcome()

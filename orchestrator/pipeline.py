@@ -596,7 +596,13 @@ class TraceOrchestrator:
             plan_verdict = _verdict(plan_judge)
             if plan_verdict is Verdict.REVISE:
                 revision = self._revise_plan(
-                    repository, contract, plan, plan_trace, plan_av, plan_judge
+                    repository,
+                    contract,
+                    plan,
+                    parent_evidence,
+                    plan_trace,
+                    plan_av,
+                    plan_judge,
                 )
                 if isinstance(revision, PipelineOutcome):
                     return revision
@@ -791,6 +797,7 @@ class TraceOrchestrator:
         repository: GitRepository,
         contract: TaskContract,
         plan: Mapping[str, Any],
+        parent_evidence: Mapping[str, Any],
         trace: RoleInvocation,
         adversary: RoleInvocation,
         judge: RoleInvocation,
@@ -803,11 +810,12 @@ class TraceOrchestrator:
                 "current_plan": dict(plan),
                 "revision_scope": list(scope),
                 "finding": judge.report.get("summary", ""),
+                "parent_evidence": dict(parent_evidence),
             },
             PLAN_SCHEMA,
             repository.path,
             READ_ONLY,
-            "Make exactly one plan-only delta limited to the supplied scope. Never modify files.",
+            "Make exactly one plan-only delta limited to the supplied scope. Preserve the supplied Author-versus-parent responsibility boundary: never add parent staging, freezing, disposable-worktree, measurement-materialization, receipt, or release mechanics to the Author plan. Never modify files.",
         )
         revised_plan = _plan_artifact(delta_author.report)
         delta = _changed_top_level_fields(plan, revised_plan)
@@ -833,11 +841,12 @@ class TraceOrchestrator:
                     },
                 },
                 "measurement": None,
+                "parent_evidence": dict(parent_evidence),
             },
             PLAN_JUDGE_SCHEMA,
             repository.path,
             READ_ONLY,
-            "Perform the single targeted recheck of the revised finding only. Inspect the supplied revised plan, emit the gate verdict plus separate P-out, P-task, and P-tech verdicts, and do not start a full review or modify files. Plan Author process summaries are not future implementation constraints. If still REVISE, revision_scope may contain only summary or plan.",
+            "Perform the single targeted recheck of the revised finding only. Inspect the supplied revised plan and preserve the supplied Author-versus-parent responsibility boundary. Disregard any prior request to put parent staging, freezing, disposable-worktree, measurement-materialization, receipt, or release mechanics into the Author plan. Emit the gate verdict plus separate P-out, P-task, and P-tech verdicts, and do not start a full review or modify files. Plan Author process summaries are not future implementation constraints. If still REVISE, revision_scope may contain only summary or plan.",
         )
         record = RevisionRecord(
             gate="PLAN",
