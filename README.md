@@ -108,7 +108,7 @@ request:
     },
     "validation": {
       "model": "gpt-5.6-sol",
-      "effort": "high",
+      "effort": "max",
       "timeout_seconds": 900
     }
   },
@@ -117,7 +117,7 @@ request:
 }
 ```
 
-This quality-oriented example chooses `gpt-5.6-sol/high` explicitly for
+This quality-oriented example chooses `gpt-5.6-sol/max` explicitly for
 `PLAN_TRACE`, `PLAN_AV`, `PLAN_JUDGE`, `PLAN_TARGETED_RECHECK`, `RESULT_TRACE`,
 `RESULT_AV`, `RESULT_JUDGE`, and `RESULT_TARGETED_RECHECK`. The runtime has no
 hidden model or effort default. Every validation role must resolve to an

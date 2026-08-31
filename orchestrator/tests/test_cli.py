@@ -64,7 +64,7 @@ class CliVerticalSliceTests(unittest.TestCase):
                 },
                 "validation": {
                     "model": "gpt-5.6-sol",
-                    "effort": "high"
+                    "effort": "max"
                 },
                 "RESULT_JUDGE": {
                     "model": "user-selected-model",
@@ -105,7 +105,7 @@ class CliVerticalSliceTests(unittest.TestCase):
         )
         self.assertEqual(
             dry["role_requested_execution"]["PLAN_TRACE"],
-            {"model": "gpt-5.6-sol", "effort": "high", "timeout_seconds": 5.0},
+            {"model": "gpt-5.6-sol", "effort": "max", "timeout_seconds": 5.0},
         )
         self.assertEqual(
             dry["receipt"]["role_requested_execution"]["RESULT_JUDGE"],
@@ -135,7 +135,7 @@ class CliVerticalSliceTests(unittest.TestCase):
         self.assertTrue(
             all(call["thread"]["model"] == "gpt-5.6-sol" for call in plan_traces)
         )
-        self.assertTrue(all(call["turn"]["effort"] == "high" for call in plan_traces))
+        self.assertTrue(all(call["turn"]["effort"] == "max" for call in plan_traces))
         result_judges = [call for call in calls if call["role"] == "RESULT_JUDGE"]
         self.assertTrue(result_judges)
         self.assertTrue(
