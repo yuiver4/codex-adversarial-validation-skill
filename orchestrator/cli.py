@@ -102,6 +102,14 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="apply the receipt-bound PASS candidate; omitted means dry-run",
     )
+    parser.add_argument(
+        "--include-role-reports",
+        action="store_true",
+        help=(
+            "include structured role reports in local JSON output; may repeat "
+            "private task content"
+        ),
+    )
     args = parser.parse_args(argv)
     try:
         job, command, role_timeout, role_execution = _load_job(args.job.resolve())
@@ -115,7 +123,13 @@ def main(argv: list[str] | None = None) -> int:
         code = error.code if isinstance(error, OrchestratorError) else "INVALID_JOB_FILE"
         print(json.dumps({"state": "BLOCKED", "code": code}, sort_keys=True))
         return 2
-    print(json.dumps(outcome.to_dict(), ensure_ascii=False, sort_keys=True))
+    print(
+        json.dumps(
+            outcome.to_dict(include_role_reports=args.include_role_reports),
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+    )
     return 0 if outcome.state in {PipelineState.DRY_RUN, PipelineState.APPLIED} else 2
 
 

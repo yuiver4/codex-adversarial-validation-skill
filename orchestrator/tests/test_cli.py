@@ -90,6 +90,8 @@ class CliVerticalSliceTests(unittest.TestCase):
         self.assertFalse((self.repository / "result.txt").exists())
         self.assertIsNotNone(dry["receipt"])
         self.assertEqual(dry["receipt"]["schema"], "trace_adv.parent_release_receipt.v2")
+        self.assertNotIn("role_reports", dry)
+        self.assertEqual(set(dry["role_report_hashes"]), set(dry["role_thread_ids"]))
         self.assertEqual(
             dry["role_requested_execution"]["PLAN_AUTHOR"],
             {"model": "test-model", "effort": "low", "timeout_seconds": 5.0},
@@ -116,6 +118,11 @@ class CliVerticalSliceTests(unittest.TestCase):
         result_judges = [call for call in calls if call["role"] == "RESULT_JUDGE"]
         self.assertTrue(result_judges)
         self.assertTrue(all(call["turn"]["effort"] == "medium" for call in result_judges))
+
+    def test_role_reports_require_explicit_local_output_flag(self) -> None:
+        result = self._run("--include-role-reports")
+        self.assertEqual(result["role_reports"]["PLAN_AUTHOR"], PLAN_REPORT)
+        self.assertEqual(result["role_reports"]["PLAN_JUDGE"], judge_report())
 
     def test_invalid_role_execution_is_rejected_before_app_server_start(self) -> None:
         job = json.loads(self.job.read_text(encoding="utf-8"))

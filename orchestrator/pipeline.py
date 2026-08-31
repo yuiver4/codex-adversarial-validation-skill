@@ -187,7 +187,7 @@ class PipelineOutcome:
     roles: Mapping[str, RoleInvocation] = field(default_factory=dict)
     revisions: tuple[RevisionRecord, ...] = ()
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self, *, include_role_reports: bool = False) -> dict[str, Any]:
         result = {
             "schema": "trace_adv.pipeline_outcome.v1",
             "state": self.state.value,
@@ -200,12 +200,20 @@ class PipelineOutcome:
             "role_thread_ids": {
                 role: result.thread_id for role, result in self.roles.items()
             },
+            "role_report_hashes": {
+                role: result.report_sha256 for role, result in self.roles.items()
+            },
             "role_requested_execution": {
                 role: dict(result.requested_execution)
                 for role, result in self.roles.items()
             },
             "revisions": [item.to_dict() for item in self.revisions],
         }
+        if include_role_reports:
+            result["role_reports"] = {
+                role: dict(invocation.report)
+                for role, invocation in self.roles.items()
+            }
         action = PUBLIC_ERROR_ACTIONS.get(self.code)
         if action is not None:
             result["action"] = action

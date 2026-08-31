@@ -144,6 +144,12 @@ Apply the receipt-bound candidate only after every gate returns PASS:
 python -B -X utf8 -m orchestrator --job C:/path/to/job.json --apply
 ```
 
+Blocked outcomes include report hashes but omit report text by default. For a
+local synthetic job whose content is safe to display, add
+`--include-role-reports` to diagnose a gate decision. This emits the structured
+role reports, not raw chain-of-thought, and may repeat the task text or artifact
+claims; do not use it when the output will be shared or logged without review.
+
 Dry-run is the default. The target must be a clean Git repository root whose
 `HEAD` is the selected base commit. The runtime creates disposable worktrees;
 it does not create persistent backup copies. Candidate identity and recovery
